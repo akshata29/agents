@@ -1,0 +1,23 @@
+# Deep Research Backend Requirements
+
+# Framework (local installation)
+# Install with: pip install -e ../../framework
+
+# API Framework
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+websockets>=12.0
+python-multipart>=0.0.6
+
+# Core dependencies
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+structlog>=23.2.0
+python-dotenv>=1.0.0
+
+# AI/ML dependencies
+openai>=1.12.0
+tavily-python>=0.3.0
+
+# Additional utilities
+aiofiles>=23.2.1

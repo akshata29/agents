@@ -1,0 +1,54 @@
+# Magentic Foundation Framework Configuration
+
+# Environment
+environment: "development"
+log_level: "info"
+
+# API Configuration  
+api:
+  host: "127.0.0.1"
+  port: 8000
+  auth_enabled: false
+  cors_origins: ["*"]
+
+# Azure Configuration
+azure:
+  subscription_id: "your-subscription-id"
+  resource_group: "your-resource-group" 
+  openai_endpoint: "https://your-openai.openai.azure.com/"
+  openai_api_key: "your-api-key"
+  openai_deployment: "gpt-4"
+
+# MCP Configuration
+mcp:
+  enabled: true
+  server_port: 8001
+  tools_enabled: true
+  
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  metrics_enabled: true
+  tracing_enabled: true
+  health_checks_enabled: true
+
+# Security Configuration
+security:
+  encryption_key: "your-32-byte-encryption-key-here"
+  session_timeout: 3600
+  audit_enabled: true
+
+# Workflow Configuration  
+workflows:
+  enabled: true
+  max_concurrent: 10
+  
+# Database Configuration (optional)
+database:
+  enabled: false
+  url: "postgresql://user:password@localhost/magentic"
+
+# Redis Configuration (optional)
+redis:
+  enabled: false
+  url: "redis://localhost:6379/0"

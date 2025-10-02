@@ -1,0 +1,19 @@
+# Simple Test Workflow - Variable Substitution Test
+name: test_variables_workflow
+version: "1.0"
+description: "Test if variables are being substituted correctly"
+
+variables:
+  - name: test_input
+    type: string
+    required: true
+
+tasks:
+  - id: test_task
+    name: "Test Variable Substitution"
+    type: agent
+    agent: "planner"
+    parameters:
+      task: "The input is: ${test_input}. Please confirm you received this."
+    outputs:
+      result: test_output

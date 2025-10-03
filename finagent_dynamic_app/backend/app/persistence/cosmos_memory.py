@@ -206,9 +206,15 @@ class CosmosMemoryStore(MemoryStoreBase):
     
     async def get_session(self, session_id: str) -> Optional[Session]:
         """Retrieve a session by ID."""
-        query = "SELECT * FROM c WHERE c.session_id=@session_id AND c.data_type='session'"
+        query_parts = ["SELECT * FROM c WHERE c.session_id=@session_id AND c.data_type='session'"]
         parameters = [{"name": "@session_id", "value": session_id}]
         
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.append("AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query = " ".join(query_parts)
         sessions = await self._query_items(query, parameters, Session)
         return sessions[0] if sessions else None
     
@@ -217,14 +223,17 @@ class CosmosMemoryStore(MemoryStoreBase):
         await self._update_item(session)
     
     async def get_all_sessions(self, limit: int = 50) -> List[Session]:
-        """Retrieve all sessions (most recent first)."""
-        query = f"""
-            SELECT * FROM c 
-            WHERE c.data_type='session'
-            ORDER BY c.created_at DESC
-            OFFSET 0 LIMIT {limit}
-        """
+        """Retrieve all sessions for the current user (most recent first)."""
+        query_parts = ["SELECT * FROM c WHERE c.data_type='session'"]
         parameters = []
+        
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.append("AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query_parts.append(f"ORDER BY c.created_at DESC OFFSET 0 LIMIT {limit}")
+        query = " ".join(query_parts)
         
         # Need to enable cross-partition query since we're not filtering by session_id
         await self.ensure_initialized()
@@ -298,28 +307,41 @@ class CosmosMemoryStore(MemoryStoreBase):
         """Retrieve a plan by ID."""
         if session_id:
             # Use partition key for efficient query
-            query = "SELECT * FROM c WHERE c.id=@plan_id AND c.session_id=@session_id AND c.data_type='plan'"
+            query_parts = ["SELECT * FROM c WHERE c.id=@plan_id AND c.session_id=@session_id AND c.data_type='plan'"]
             parameters = [
                 {"name": "@plan_id", "value": plan_id},
                 {"name": "@session_id", "value": session_id}
             ]
         else:
             # Fallback to cross-partition query
-            query = "SELECT * FROM c WHERE c.id=@plan_id AND c.data_type='plan'"
+            query_parts = ["SELECT * FROM c WHERE c.id=@plan_id AND c.data_type='plan'"]
             parameters = [{"name": "@plan_id", "value": plan_id}]
         
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.append("AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query = " ".join(query_parts)
         plans = await self._query_items(query, parameters, Plan)
         return plans[0] if plans else None
     
     async def get_plan_by_session(self, session_id: str) -> Optional[Plan]:
         """Retrieve the plan for a given session."""
-        query = """
-            SELECT * FROM c 
-            WHERE c.session_id=@session_id 
-            AND c.data_type='plan'
-            ORDER BY c.timestamp DESC
-        """
+        query_parts = [
+            "SELECT * FROM c",
+            "WHERE c.session_id=@session_id",
+            "AND c.data_type='plan'"
+        ]
         parameters = [{"name": "@session_id", "value": session_id}]
+        
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.insert(3, "AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query_parts.append("ORDER BY c.timestamp DESC")
+        query = " ".join(query_parts)
         
         plans = await self._query_items(query, parameters, Plan)
         return plans[0] if plans else None
@@ -351,17 +373,23 @@ class CosmosMemoryStore(MemoryStoreBase):
     
     async def get_step(self, step_id: str, session_id: str) -> Optional[Step]:
         """Retrieve a step by ID."""
-        query = """
-            SELECT * FROM c 
-            WHERE c.id=@step_id 
-            AND c.session_id=@session_id 
-            AND c.data_type='step'
-        """
+        query_parts = [
+            "SELECT * FROM c",
+            "WHERE c.id=@step_id",
+            "AND c.session_id=@session_id",
+            "AND c.data_type='step'"
+        ]
         parameters = [
             {"name": "@step_id", "value": step_id},
             {"name": "@session_id", "value": session_id},
         ]
         
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.insert(4, "AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query = " ".join(query_parts)
         steps = await self._query_items(query, parameters, Step)
         return steps[0] if steps else None
     
@@ -369,26 +397,33 @@ class CosmosMemoryStore(MemoryStoreBase):
         """Retrieve all steps for a plan (ordered by creation)."""
         if session_id:
             # Use partition key for efficient query
-            query = """
-                SELECT * FROM c 
-                WHERE c.plan_id=@plan_id 
-                AND c.session_id=@session_id
-                AND c.data_type='step'
-                ORDER BY c.timestamp ASC
-            """
+            query_parts = [
+                "SELECT * FROM c",
+                "WHERE c.plan_id=@plan_id",
+                "AND c.session_id=@session_id",
+                "AND c.data_type='step'"
+            ]
             parameters = [
                 {"name": "@plan_id", "value": plan_id},
                 {"name": "@session_id", "value": session_id}
             ]
         else:
             # Fallback to cross-partition query
-            query = """
-                SELECT * FROM c 
-                WHERE c.plan_id=@plan_id 
-                AND c.data_type='step'
-                ORDER BY c.timestamp ASC
-            """
+            query_parts = [
+                "SELECT * FROM c",
+                "WHERE c.plan_id=@plan_id",
+                "AND c.data_type='step'"
+            ]
             parameters = [{"name": "@plan_id", "value": plan_id}]
+        
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            insert_pos = 4 if session_id else 3
+            query_parts.insert(insert_pos, "AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query_parts.append("ORDER BY c.timestamp ASC")
+        query = " ".join(query_parts)
         
         return await self._query_items(query, parameters, Step)
     
@@ -410,31 +445,95 @@ class CosmosMemoryStore(MemoryStoreBase):
         limit: Optional[int] = None,
     ) -> List[AgentMessage]:
         """Retrieve all messages for a session (chronological order)."""
-        query = """
-            SELECT * FROM c 
-            WHERE c.session_id=@session_id 
-            AND c.data_type='message'
-            ORDER BY c.timestamp ASC
-        """
+        query_parts = [
+            "SELECT * FROM c",
+            "WHERE c.session_id=@session_id",
+            "AND c.data_type='message'"
+        ]
+        parameters = [{"name": "@session_id", "value": session_id}]
+        
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.insert(3, "AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query_parts.append("ORDER BY c.timestamp ASC")
         
         if limit:
-            query += f" OFFSET 0 LIMIT {limit}"
+            query_parts.append(f"OFFSET 0 LIMIT {limit}")
         
-        parameters = [{"name": "@session_id", "value": session_id}]
+        query = " ".join(query_parts)
         
         return await self._query_items(query, parameters, AgentMessage)
     
     async def get_messages_by_plan(self, plan_id: str) -> List[AgentMessage]:
         """Retrieve all messages for a plan."""
-        query = """
-            SELECT * FROM c 
-            WHERE c.plan_id=@plan_id 
-            AND c.data_type='message'
-            ORDER BY c.timestamp ASC
-        """
+        query_parts = [
+            "SELECT * FROM c",
+            "WHERE c.plan_id=@plan_id",
+            "AND c.data_type='message'"
+        ]
         parameters = [{"name": "@plan_id", "value": plan_id}]
         
+        # Add user_id filter if available for multi-user isolation
+        if self.user_id:
+            query_parts.insert(3, "AND c.user_id=@user_id")
+            parameters.append({"name": "@user_id", "value": self.user_id})
+        
+        query_parts.append("ORDER BY c.timestamp ASC")
+        query = " ".join(query_parts)
+        
         return await self._query_items(query, parameters, AgentMessage)
+    
+    # ========================================================================
+    # User History Methods
+    # ========================================================================
+    
+    async def get_user_history(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Retrieve user's task history with plans and their objectives.
+        
+        Returns a list of dictionaries containing:
+        - session_id: Session identifier
+        - plan_id: Plan identifier  
+        - objective: The task/objective
+        - status: Overall plan status
+        - created_at: Plan creation timestamp
+        - steps_count: Number of steps in the plan
+        
+        Args:
+            limit: Maximum number of history items to return (default: 20)
+            
+        Returns:
+            List of history items ordered by most recent first
+        """
+        if not self.user_id:
+            logger.warning("Cannot retrieve user history without user_id")
+            return []
+        
+        # Get all plans for this user
+        plans = await self.get_all_plans(user_id=self.user_id, limit=limit)
+        
+        history = []
+        for plan in plans:
+            # Get step count for this plan
+            steps = await self.get_steps_by_plan(
+                plan_id=plan.id,
+                session_id=plan.session_id
+            )
+            
+            history_item = {
+                "session_id": plan.session_id,
+                "plan_id": plan.id,
+                "objective": plan.initial_goal,  # Plan uses 'initial_goal' not 'objective'
+                "status": plan.overall_status,
+                "created_at": plan.timestamp,
+                "steps_count": len(steps),
+                "user_id": plan.user_id
+            }
+            history.append(history_item)
+        
+        return history
     
     # ========================================================================
     # Query Methods

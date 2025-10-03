@@ -5,6 +5,7 @@ Generates PDF equity research reports from accumulated analysis.
 """
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 import structlog
 from agent_framework import BaseAgent, ChatMessage, Role, TextContent, AgentRunResponse
 
@@ -30,6 +31,8 @@ concise, professional equity research briefs for institutional investors.
 
 Your role is to synthesize analysis from multiple sources into a coherent investment narrative.
 
+IMPORTANT: Always use the current date provided in prompts. Do not use dates from your training data.
+
 Report Structure (1-3 pages):
 1. **Executive Summary**: One-paragraph investment thesis
 2. **Company Overview**: Business model, industry, competitive position
@@ -50,13 +53,13 @@ Style Guidelines:
         self,
         name: str = "ReportAgent",
         description: str = "Equity research report generation specialist",
-        azure_client: Any = None,
+        chat_client: Any = None,  # Changed from azure_client to chat_client
         model: str = "gpt-4o",
         tools: Optional[List[Dict[str, Any]]] = None
     ):
         """Initialize Report Agent."""
         super().__init__(name=name, description=description)
-        self.azure_client = azure_client
+        self.chat_client = chat_client
         self.model = model
         self.tools = tools or []
         self.system_prompt = self.SYSTEM_MESSAGE
@@ -72,6 +75,35 @@ Style Guidelines:
             "format_pdf_brief",
             "generate_recommendation"
         ]
+    
+    async def process(self, task: str, context: Dict[str, Any]) -> str:
+        """
+        Process a report generation task (compatible with TaskOrchestrator).
+        
+        Args:
+            task: Task description
+            context: Execution context with ticker and previous_results
+            
+        Returns:
+            Report text
+        """
+        logger.info(
+            "ReportAgent.process() called",
+            task_preview=task[:100],
+            context_keys=list(context.keys()),
+            ticker=context.get('ticker')
+        )
+        
+        # Call run() and extract text from response
+        response = await self.run(messages=task, context=context)
+        result_text = response.messages[-1].text if response.messages else "No report generated"
+        
+        logger.info(
+            "ReportAgent.process() completed",
+            result_length=len(result_text)
+        )
+        
+        return result_text
     
     async def run(
         self,
@@ -133,6 +165,9 @@ to a professional PDF document using standard report templates.
         context: Dict[str, Any]
     ) -> str:
         """Build report generation prompt."""
+        # Get current date for the report
+        current_date = datetime.utcnow().strftime("%B %d, %Y")
+        
         # Extract summaries from artifacts
         company_summary = self._extract_artifact_summary(artifacts, "company_profile")
         sec_summary = self._extract_artifact_summary(artifacts, "sec_analysis")
@@ -140,7 +175,33 @@ to a professional PDF document using standard report templates.
         fundamental_summary = self._extract_artifact_summary(artifacts, "fundamental_analysis")
         technical_summary = self._extract_artifact_summary(artifacts, "technical_analysis")
         
+        # Also check for previous_results from context (new approach)
+        previous_results = context.get("previous_results", [])
+        if previous_results:
+            logger.info(
+                "Using previous_results from context",
+                result_count=len(previous_results),
+                agents=[r['agent'] for r in previous_results]
+            )
+            # Map agent outputs to summaries
+            for result in previous_results:
+                agent_name = result['agent']
+                content = result['content']
+                
+                if 'Company' in agent_name and not company_summary:
+                    company_summary = content
+                elif 'SEC' in agent_name and not sec_summary:
+                    sec_summary = content
+                elif 'Earning' in agent_name and not earnings_summary:
+                    earnings_summary = content
+                elif 'Fundamental' in agent_name and not fundamental_summary:
+                    fundamental_summary = content
+                elif 'Technical' in agent_name and not technical_summary:
+                    technical_summary = content
+        
         prompt = f"""Generate a comprehensive but concise Equity Research Brief for {ticker}.
+
+IMPORTANT: Today's date is {current_date}. Use this as the report date and ensure all analysis reflects current data as of this date.
 
 Synthesize the following analyses into a 1-3 page professional report:
 
@@ -164,7 +225,7 @@ Synthesize the following analyses into a 1-3 page professional report:
 Create a report with the following structure:
 
 # {ticker} Equity Research Brief
-*Date: [Current Date]*
+*Date: {current_date}*
 
 ## Executive Summary
 [One paragraph: Investment thesis, recommendation, key catalyst or concern]
@@ -224,21 +285,24 @@ Use clear, professional language. Include specific numbers. Be balanced and obje
         return None
     
     async def _execute_llm(self, prompt: str) -> str:
-        """Execute LLM call."""
-        if not self.azure_client:
+        """Execute LLM call using agent_framework's AzureOpenAIChatClient."""
+        if not self.chat_client:
             return f"[Simulated Report]\n{prompt}"
         
-        response = await self.azure_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+        from agent_framework import ChatMessage, Role
+        
+        messages = [
+            ChatMessage(role=Role.SYSTEM, text=self.system_prompt),
+            ChatMessage(role=Role.USER, text=prompt)
+        ]
+        
+        response = await self.chat_client.get_response(
+            messages=messages,
             temperature=0.7,
             max_tokens=4000
         )
         
-        return response.choices[0].message.content
+        return response.text
     
     def _extract_task(self, messages) -> str:
         """Extract task from messages."""

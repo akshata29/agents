@@ -5,8 +5,8 @@ REST API endpoints for task planning, approval workflow, and execution.
 Uses TaskOrchestrator service to bridge framework patterns with Cosmos storage.
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 import structlog
 
 from ..models.task_models import (
@@ -14,6 +14,8 @@ from ..models.task_models import (
     PlanWithSteps, TaskListItem, ActionResponse, StepStatus
 )
 from ..services.task_orchestrator import TaskOrchestrator
+from ..persistence.cosmos_memory import CosmosMemoryStore
+from ..auth.auth_utils import get_authenticated_user_details
 from ..infra.settings import Settings
 
 logger = structlog.get_logger(__name__)
@@ -39,6 +41,7 @@ async def get_task_orchestrator() -> TaskOrchestrator:
 @router.post("/input_task", response_model=PlanWithSteps)
 async def create_plan_from_objective(
     input_task: InputTask,
+    request: Request,
     orchestrator: TaskOrchestrator = Depends(get_task_orchestrator)
 ):
     """
@@ -46,6 +49,7 @@ async def create_plan_from_objective(
     
     Uses framework's DynamicPlanner to generate a structured plan with steps.
     Each step must be approved before execution.
+    Automatically extracts user_id from authentication headers.
     
     **Request Body:**
     ```json
@@ -62,11 +66,23 @@ async def create_plan_from_objective(
     **Response:**
     Returns a Plan with pending steps awaiting approval.
     """
+    # Extract user_id from authentication headers
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
+    user_id = authenticated_user["user_principal_id"]
+    
+    if not user_id:
+        logger.error("API: No user_principal_id found in headers")
+        raise HTTPException(status_code=400, detail="User authentication required")
+    
+    # Override user_id in input_task with authenticated user
+    input_task.user_id = user_id
+    
     logger.info(
         "API: Creating plan from objective",
         description=input_task.description[:100],
         session_id=input_task.session_id,
-        ticker=input_task.ticker
+        ticker=input_task.ticker,
+        user_id=user_id
     )
 
     try:
@@ -75,7 +91,8 @@ async def create_plan_from_objective(
         logger.info(
             "API: Plan created successfully",
             plan_id=plan.id,
-            steps_count=len(plan.steps)
+            steps_count=len(plan.steps),
+            user_id=user_id
         )
         
         return plan
@@ -84,7 +101,8 @@ async def create_plan_from_objective(
         logger.error(
             "API: Failed to create plan",
             error=str(e),
-            description=input_task.description[:100]
+            description=input_task.description[:100],
+            user_id=user_id
         )
         raise HTTPException(
             status_code=500,
@@ -198,6 +216,72 @@ async def list_all_tasks(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to list tasks: {str(e)}"
+        )
+
+
+@router.get("/history", response_model=List[Dict[str, Any]])
+async def get_user_history(
+    request: Request,
+    limit: int = Query(20, description="Maximum number of history items to return"),
+    orchestrator: TaskOrchestrator = Depends(get_task_orchestrator)
+):
+    """
+    Retrieve user's task history with objectives and status.
+    
+    Automatically extracts user_id from authentication headers for multi-user isolation.
+    
+    **Query Parameters:**
+    - `limit`: Maximum number of history items to return (default: 20)
+    
+    **Response:**
+    Returns list of user's tasks/plans with:
+    - session_id: Session identifier
+    - plan_id: Plan identifier
+    - objective: The task objective/goal
+    - status: Overall plan status
+    - created_at: When the plan was created
+    - steps_count: Number of steps in the plan
+    
+    Ordered by most recent first.
+    """
+    # Extract user_id from authentication headers
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
+    user_id = authenticated_user["user_principal_id"]
+    
+    if not user_id:
+        logger.error("API: No user_principal_id found in headers")
+        raise HTTPException(status_code=400, detail="User authentication required")
+    
+    logger.info("API: Retrieving user history", user_id=user_id, limit=limit)
+
+    try:
+        # Create a temporary memory store instance with user_id
+        cosmos = CosmosMemoryStore(
+            endpoint=orchestrator.cosmos.endpoint,
+            database_name=orchestrator.cosmos.database_name,
+            container_name=orchestrator.cosmos.container_name,
+            user_id=user_id,  # Set user_id for filtering
+            tenant_id=orchestrator.cosmos.tenant_id,
+            client_id=orchestrator.cosmos.client_id,
+            client_secret=orchestrator.cosmos.client_secret,
+        )
+        
+        await cosmos.initialize()
+        
+        # Get user history
+        history = await cosmos.get_user_history(limit=limit)
+        
+        await cosmos.close()
+        
+        logger.info("API: User history retrieved", user_id=user_id, count=len(history))
+        
+        return history
+
+    except Exception as e:
+        logger.error("API: Failed to retrieve user history", user_id=user_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve user history: {str(e)}"
         )
 
 
@@ -492,11 +576,9 @@ async def get_conversation_history(
 
     try:
         if plan_id:
-            messages_data = await orchestrator.cosmos.get_messages_by_plan(plan_id, session_id)
+            messages = await orchestrator.cosmos.get_messages_by_plan(plan_id)
         else:
-            messages_data = await orchestrator.cosmos.get_messages_by_session(session_id)
-        
-        messages = [AgentMessage(**msg_data) for msg_data in messages_data]
+            messages = await orchestrator.cosmos.get_messages_by_session(session_id)
         
         logger.info(
             "API: Messages retrieved",

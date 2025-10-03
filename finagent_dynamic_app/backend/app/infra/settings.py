@@ -29,11 +29,27 @@ class Settings(BaseSettings):
     # Financial Data APIs
     fmp_api_key: Optional[str] = Field(default=None, alias="FMP_API_KEY")
     yahoo_finance_enabled: bool = Field(default=True, alias="YAHOO_FINANCE_ENABLED")
+    yahoo_finance_mcp_url: str = Field(default="http://localhost:8001/sse", alias="YAHOO_FINANCE_MCP_URL")
     sec_api_key: Optional[str] = Field(default=None, alias="SEC_API_KEY")
     sec_user_agent: str = Field(
         default="FinAgent Research Bot contact@example.com",
         alias="SEC_USER_AGENT"
     )
+    
+    @property
+    def FMP_API_KEY(self) -> Optional[str]:
+        """Uppercase alias for fmp_api_key."""
+        return self.fmp_api_key
+    
+    @property
+    def YAHOO_FINANCE_MCP_URL(self) -> str:
+        """Uppercase alias for yahoo_finance_mcp_url."""
+        return self.yahoo_finance_mcp_url
+    
+    @property
+    def AZURE_OPENAI_API_KEY(self) -> str:
+        """Uppercase alias for azure_openai_api_key."""
+        return self.azure_openai_api_key
     
     # Azure Storage
     azure_storage_connection_string: Optional[str] = Field(

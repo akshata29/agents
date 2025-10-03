@@ -63,7 +63,7 @@ Structure your analysis clearly with supporting evidence from the filings."""
         self,
         name: str = "SECAgent",
         description: str = "SEC filings and regulatory analysis specialist",
-        azure_client: Any = None,
+        chat_client: Any = None,  # Changed from azure_client to chat_client
         model: str = "gpt-4o",
         fmp_api_key: Optional[str] = None
     ):
@@ -71,7 +71,7 @@ Structure your analysis clearly with supporting evidence from the filings."""
         super().__init__(name=name, description=description)
         
         # Store custom attributes
-        self.azure_client = azure_client
+        self.chat_client = chat_client
         self.model = model
         self.system_prompt = self.SYSTEM_PROMPT
         
@@ -391,21 +391,24 @@ Be professional, analytical, and provide actionable insights for investment deci
         return prompt
     
     async def _execute_llm(self, prompt: str) -> str:
-        """Execute LLM call."""
-        if not self.azure_client:
+        """Execute LLM call using agent_framework's AzureOpenAIChatClient."""
+        if not self.chat_client:
             return f"[Simulated SEC Analysis]\n{prompt}"
         
-        response = await self.azure_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+        from agent_framework import ChatMessage, Role
+        
+        messages = [
+            ChatMessage(role=Role.SYSTEM, text=self.system_prompt),
+            ChatMessage(role=Role.USER, text=prompt)
+        ]
+        
+        response = await self.chat_client.get_response(
+            messages=messages,
             temperature=0.7,
             max_tokens=3000
         )
         
-        return response.choices[0].message.content
+        return response.text
     
     def _create_response(self, text: str) -> AgentRunResponse:
         """Create agent response following MAF pattern."""
@@ -450,5 +453,5 @@ Be professional, analytical, and provide actionable insights for investment deci
     async def process(self, task: str, context: Dict[str, Any] = None) -> str:
         """Legacy method for YAML-based workflow compatibility."""
         context = context or {}
-        response = await self.run(messages=task, thread=None, context=context)
+        response = await self.run(messages=task, thread=None, ticker=context.get('ticker'), context=context)
         return response.messages[-1].text if response.messages else ""

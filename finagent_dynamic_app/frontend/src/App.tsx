@@ -4,6 +4,7 @@ import { TrendingUp } from 'lucide-react';
 import { TaskList } from './components/TaskList';
 import { TaskInput } from './components/TaskInput';
 import { PlanView } from './components/PlanView';
+import { UserHistory } from './components/UserHistory';
 import { apiClient, Plan } from './lib/api';
 import './App.css';
 
@@ -29,7 +30,7 @@ function AppContent() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
-  const [view, setView] = useState<'new' | 'detail'>('new');
+  const [view, setView] = useState<'new' | 'detail' | 'history'>('new');
 
   const handleTaskSelect = async (sessionId: string, planId: string) => {
     setSelectedSession(sessionId);
@@ -138,6 +139,16 @@ function AppContent() {
             >
               Task Details
             </button>
+            <button
+              onClick={() => setView('history')}
+              className={`px-6 py-3 font-medium transition-colors ${
+                view === 'history'
+                  ? 'text-primary-400 border-b-2 border-primary-400'
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              History
+            </button>
           </div>
         </div>
       </div>
@@ -160,6 +171,12 @@ function AppContent() {
                 onSubmit={handleCreatePlan}
                 isLoading={isCreatingPlan}
               />
+            )}
+            
+            {view === 'history' && (
+              <div className="max-w-4xl mx-auto">
+                <UserHistory onSelectTask={handleTaskSelect} />
+              </div>
             )}
             
             {view === 'detail' && plan && (

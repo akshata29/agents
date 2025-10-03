@@ -41,6 +41,8 @@ class TechnicalsAgent(BaseAgent):
     SYSTEM_PROMPT = """You are a specialized Technical Analysis Agent with expertise in 
 historical stock price data, technical indicators, and chart pattern recognition.
 
+IMPORTANT: Always use the current date provided in prompts when discussing recent price action or indicator signals.
+
 Your capabilities include:
 1. Calculate and interpret multiple technical indicators:
    - EMA Crossover (short-term vs long-term trends)
@@ -60,13 +62,13 @@ Be data-driven and explain the reasoning behind signals."""
         self,
         name: str = "TechnicalsAgent",
         description: str = "Technical analysis and charting specialist",
-        azure_client: Any = None,
+        chat_client: Any = None,  # Changed from azure_client to chat_client
         model: str = "gpt-4o",
         tools: Optional[List[Dict[str, Any]]] = None
     ):
         """Initialize Technicals Agent."""
         super().__init__(name=name, description=description)
-        self.azure_client = azure_client
+        self.chat_client = chat_client
         self.model = model
         self.tools = tools or []
         self.system_prompt = self.SYSTEM_PROMPT
@@ -159,9 +161,14 @@ Be data-driven and explain the reasoning behind signals."""
             })
             context["artifacts"] = artifacts
             
+            # Return proper AgentRunResponse with messages
             return AgentRunResponse(
-                content=result_text,
-                context=context
+                messages=[
+                    ChatMessage(
+                        role=Role.ASSISTANT,
+                        contents=[TextContent(text=result_text)]
+                    )
+                ]
             )
             
         except Exception as e:
@@ -171,8 +178,12 @@ Be data-driven and explain the reasoning behind signals."""
                 ticker=ticker
             )
             return AgentRunResponse(
-                content=f"Error performing technical analysis for {ticker}: {str(e)}",
-                context=context
+                messages=[
+                    ChatMessage(
+                        role=Role.ASSISTANT,
+                        contents=[TextContent(text=f"Error performing technical analysis for {ticker}: {str(e)}")]
+                    )
+                ]
             )
     
     async def _fetch_technical_data(
@@ -241,8 +252,14 @@ Be data-driven and explain the reasoning behind signals."""
         Returns:
             Formatted prompt with technical data
         """
+        # Get current date for temporal context
+        from datetime import datetime
+        current_date = datetime.utcnow().strftime("%B %d, %Y")
+        
         if "error" in technical_data:
             prompt = f"""{self.system_prompt}
+
+IMPORTANT: Today's date is {current_date}.
 
 User Task: {task}
 
@@ -260,6 +277,8 @@ Please inform the user that technical analysis data is not available for {ticker
         signals = technical_data.get("signals", {})
         
         prompt = f"""{self.system_prompt}
+
+IMPORTANT: Today's date is {current_date}. Use this date when discussing recent price action or signals.
 
 User Task: {task}
 
@@ -397,21 +416,24 @@ Be specific with the actual numbers from the data above. Explain why certain ind
         return prompt
     
     async def _execute_llm(self, prompt: str) -> str:
-        """Execute LLM call."""
-        if not self.azure_client:
+        """Execute LLM call using agent_framework's AzureOpenAIChatClient."""
+        if not self.chat_client:
             return f"[Simulated Technical Analysis]\n{prompt}"
         
-        response = await self.azure_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+        from agent_framework import ChatMessage, Role
+        
+        messages = [
+            ChatMessage(role=Role.SYSTEM, text=self.system_prompt),
+            ChatMessage(role=Role.USER, text=prompt)
+        ]
+        
+        response = await self.chat_client.get_response(
+            messages=messages,
             temperature=0.7,
             max_tokens=3000
         )
         
-        return response.choices[0].message.content
+        return response.text
     
     def _create_response(self, text: str) -> AgentRunResponse:
         """Create agent response following MAF pattern."""
@@ -429,5 +451,5 @@ Be specific with the actual numbers from the data above. Explain why certain ind
     async def process(self, task: str, context: Dict[str, Any] = None) -> str:
         """Legacy method for YAML workflow compatibility."""
         context = context or {}
-        response = await self.run(messages=task, thread=None, context=context)
+        response = await self.run(messages=task, thread=None, ticker=context.get('ticker'), context=context)
         return response.messages[-1].text if response.messages else ""

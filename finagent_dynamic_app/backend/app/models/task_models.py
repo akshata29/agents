@@ -34,6 +34,7 @@ class AgentType(str, Enum):
     TECHNICALS = "Technicals_Agent"
     FORECASTER = "Forecaster_Agent"
     REPORT = "Report_Agent"
+    SUMMARIZER = "Summarizer_Agent"
     GENERIC = "Generic_Agent"
     HUMAN = "Human_Agent"
     GROUP_CHAT_MANAGER = "GroupChatManager"
@@ -46,6 +47,7 @@ class StepStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     ACTION_REQUESTED = "action_requested"
+    EXECUTING = "executing"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -151,6 +153,11 @@ class Step(BaseDataModel):
     
     # Ordering
     order: Optional[int] = None
+    
+    # Dependencies and artifact requirements
+    dependencies: List[str] = Field(default_factory=list)  # List of step IDs that must complete first
+    required_artifacts: List[str] = Field(default_factory=list)  # Types of artifacts needed (e.g., "news", "recommendations")
+    tools: List[str] = Field(default_factory=list)  # Specific tools/functions to call
 
 
 class AgentMessage(BaseDataModel):
@@ -182,6 +189,7 @@ class InputTask(BaseModel):
     """User input to create a new plan."""
     
     session_id: Optional[str] = None  # Auto-generated if not provided
+    user_id: Optional[str] = None  # Auto-populated from authentication
     description: str
     
     # Optional financial context

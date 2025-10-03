@@ -21,13 +21,16 @@ export interface Step {
   order?: number;
   action: string;
   agent: string;
-  status: 'planned' | 'awaiting_feedback' | 'approved' | 'rejected' | 'action_requested' | 'completed' | 'failed';
+  status: 'planned' | 'awaiting_feedback' | 'approved' | 'rejected' | 'action_requested' | 'executing' | 'completed' | 'failed';
   agent_reply?: string;
   error_message?: string;
   human_feedback?: string;
   human_approval_status?: 'requested' | 'accepted' | 'rejected';
   updated_action?: string;
   timestamp: string;
+  dependencies?: string[];  // List of step IDs this step depends on
+  required_artifacts?: string[];  // Types of artifacts needed
+  tools?: string[];  // Specific tools/functions to call
 }
 
 export interface Plan {
@@ -65,7 +68,7 @@ export interface AgentMessage {
   step_id?: string;
   agent_name: string;
   content: string;
-  message_type: 'info' | 'action' | 'result' | 'error';
+  message_type: 'info' | 'action' | 'result' | 'error' | 'progress' | 'action_response';
   timestamp: string;
 }
 
@@ -83,6 +86,17 @@ export interface TaskListItem {
   completed_steps: number;
   timestamp: string;
   ticker?: string;
+}
+
+export interface UserHistoryItem {
+  ticker: any;
+  session_id: string;
+  plan_id: string;
+  objective: string;
+  status: 'in_progress' | 'completed' | 'failed' | 'cancelled';
+  created_at: string;
+  steps_count: number;
+  user_id: string;
 }
 
 // ============= API Client =============
@@ -123,6 +137,13 @@ class APIClient {
     return response.data;
   }
 
+  async getUserHistory(limit: number = 20): Promise<UserHistoryItem[]> {
+    const response = await axios.get<UserHistoryItem[]>(
+      `${this.baseURL}/api/history?limit=${limit}`
+    );
+    return response.data;
+  }
+
   async deleteSession(sessionId: string): Promise<{ message: string }> {
     const response = await axios.delete<{ message: string }>(
       `${this.baseURL}/api/sessions/${sessionId}`
@@ -156,6 +177,13 @@ class APIClient {
   async getMessages(sessionId: string): Promise<AgentMessage[]> {
     const response = await axios.get<AgentMessage[]>(
       `${this.baseURL}/api/messages/${sessionId}`
+    );
+    return response.data;
+  }
+
+  async getMessagesByPlan(sessionId: string, planId: string): Promise<AgentMessage[]> {
+    const response = await axios.get<AgentMessage[]>(
+      `${this.baseURL}/api/messages/${sessionId}?plan_id=${planId}`
     );
     return response.data;
   }

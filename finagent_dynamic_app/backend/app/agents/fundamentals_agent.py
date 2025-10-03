@@ -43,6 +43,8 @@ class FundamentalsAgent(BaseAgent):
     SYSTEM_PROMPT = """You are a Fundamental Analysis Agent specialized in analyzing 
 financial statements and computing key financial ratios.
 
+IMPORTANT: Always use the current date provided in prompts when discussing recent data or trends.
+
 Your responsibilities:
 1. Retrieve and analyze 3-5 years of fundamental data (cash flow, income, balance sheet)
 2. Compute key financial ratios:
@@ -62,14 +64,14 @@ Be quantitative, use specific numbers, and highlight trends and anomalies."""
         self,
         name: str = "FundamentalsAgent",
         description: str = "Fundamental analysis and financial ratios specialist",
-        azure_client: Any = None,
+        chat_client: Any = None,  # Changed from azure_client to chat_client
         model: str = "gpt-4o",
         tools: Optional[List[Dict[str, Any]]] = None,
         fmp_api_key: Optional[str] = None
     ):
         """Initialize Fundamentals Agent."""
         super().__init__(name=name, description=description)
-        self.azure_client = azure_client
+        self.chat_client = chat_client
         self.model = model
         self.tools = tools or []
         self.system_prompt = self.SYSTEM_PROMPT
@@ -170,8 +172,10 @@ Be quantitative, use specific numbers, and highlight trends and anomalies."""
             context["artifacts"] = artifacts
             
             return AgentRunResponse(
-                content=result_text,
-                context=context
+                messages=[ChatMessage(
+                    role=Role.ASSISTANT,
+                    contents=[TextContent(text=result_text)]
+                )]
             )
             
         except Exception as e:
@@ -181,8 +185,10 @@ Be quantitative, use specific numbers, and highlight trends and anomalies."""
                 ticker=ticker
             )
             return AgentRunResponse(
-                content=f"Error analyzing fundamentals for {ticker}: {str(e)}",
-                context=context
+                messages=[ChatMessage(
+                    role=Role.ASSISTANT,
+                    contents=[TextContent(text=f"Error analyzing fundamentals for {ticker}: {str(e)}")]
+                )]
             )
     
     async def _fetch_fundamental_data(
@@ -192,6 +198,9 @@ Be quantitative, use specific numbers, and highlight trends and anomalies."""
     ) -> Dict[str, Any]:
         """
         Fetch real fundamental data from FMP API.
+        
+        The planner already specifies what analysis to perform,
+        so we fetch all available data and let the LLM extract what's relevant.
         
         Args:
             ticker: Stock ticker symbol
@@ -272,8 +281,13 @@ Be quantitative, use specific numbers, and highlight trends and anomalies."""
         ratings = fundamental_data.get("ratings", {})
         financial_scores = fundamental_data.get("financial_scores", [])
         
+        # Get current date for temporal context
+        current_date = datetime.utcnow().strftime("%B %d, %Y")
+        
         # Build prompt with real data
         prompt = f"""{self.system_prompt}
+
+IMPORTANT: Today's date is {current_date}. Use this date when discussing recent trends or current data.
 
 User Task: {task}
 
@@ -374,21 +388,24 @@ Be specific with numbers from the data above. Identify trends, anomalies, and pr
         return prompt
     
     async def _execute_llm(self, prompt: str) -> str:
-        """Execute LLM call."""
-        if not self.azure_client:
+        """Execute LLM call using agent_framework's AzureOpenAIChatClient."""
+        if not self.chat_client:
             return f"[Simulated Fundamental Analysis]\n{prompt}"
         
-        response = await self.azure_client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": prompt}
-            ],
+        from agent_framework import ChatMessage, Role
+        
+        messages = [
+            ChatMessage(role=Role.SYSTEM, text=self.system_prompt),
+            ChatMessage(role=Role.USER, text=prompt)
+        ]
+        
+        response = await self.chat_client.get_response(
+            messages=messages,
             temperature=0.7,
             max_tokens=3000
         )
         
-        return response.choices[0].message.content
+        return response.text
     
     def _create_response(self, text: str) -> AgentRunResponse:
         """Create agent response following MAF pattern."""
@@ -406,5 +423,5 @@ Be specific with numbers from the data above. Identify trends, anomalies, and pr
     async def process(self, task: str, context: Dict[str, Any] = None) -> str:
         """Legacy method for YAML workflow compatibility."""
         context = context or {}
-        response = await self.run(messages=task, thread=None, context=context)
+        response = await self.run(messages=task, thread=None, ticker=context.get('ticker'), context=context)
         return response.messages[-1].text if response.messages else ""

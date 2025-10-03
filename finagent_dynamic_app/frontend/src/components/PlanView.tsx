@@ -5,10 +5,10 @@
  * Clean layout with left steps panel and right output panel
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { marked } from 'marked';
 import { Play, CheckCircle, XCircle, Clock, TrendingUp, Users, Zap, Activity } from 'lucide-react';
-import { Plan, Step } from '../lib/api';
+import { Plan, Step, AgentMessage, apiClient } from '../lib/api';
 
 // Configure marked for better output
 marked.setOptions({
@@ -31,12 +31,59 @@ export const PlanView: React.FC<PlanViewProps> = ({
 }) => {
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [processingSteps, setProcessingSteps] = useState<Set<string>>(new Set());
+  const [stepMessages, setStepMessages] = useState<AgentMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // Fetch messages when selected step changes
+  useEffect(() => {
+    if (!selectedStep || !plan.session_id) return;
+
+    const fetchMessages = async () => {
+      setLoadingMessages(true);
+      try {
+        const allMessages = await apiClient.getMessagesByPlan(plan.session_id, plan.id);
+        // Filter messages for the selected step
+        const filtered = allMessages.filter(msg => msg.step_id === selectedStep);
+        console.log('Fetched messages for step:', selectedStep, 'Count:', filtered.length, 'Messages:', filtered);
+        setStepMessages(filtered);
+      } catch (error) {
+        console.error('Failed to fetch messages:', error);
+        setStepMessages([]);
+      } finally {
+        setLoadingMessages(false);
+      }
+    };
+
+    fetchMessages();
+    
+    // Poll for updates if step is not in a terminal state
+    const selectedStepData = plan.steps?.find(s => s.id === selectedStep);
+    const isTerminalState = selectedStepData?.status === 'completed' || 
+                           selectedStepData?.status === 'failed' || 
+                           selectedStepData?.status === 'rejected';
+    
+    console.log('Selected step status:', selectedStepData?.status, 'Will poll:', !isTerminalState);
+    
+    // Poll for any non-terminal state (planned, approved, executing, etc.)
+    if (!isTerminalState) {
+      console.log('Starting polling for step:', selectedStep);
+      const interval = setInterval(() => {
+        console.log('Polling for messages...');
+        fetchMessages();
+      }, 2000);
+      return () => {
+        console.log('Stopping polling for step:', selectedStep);
+        clearInterval(interval);
+      };
+    }
+  }, [selectedStep, plan.session_id, plan.id, plan.steps]);
 
   const getStatusBadge = (status: string) => {
     const badges = {
       'planned': { text: 'PLANNED', class: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
       'awaiting_feedback': { text: 'AWAITING', class: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
       'approved': { text: 'APPROVED', class: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+      'executing': { text: 'EXECUTING', class: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
       'completed': { text: 'COMPLETED', class: 'bg-success-500/20 text-success-400 border-success-500/30' },
       'failed': { text: 'FAILED', class: 'bg-error-500/20 text-error-400 border-error-500/30' },
       'rejected': { text: 'REJECTED', class: 'bg-error-500/20 text-error-400 border-error-500/30' },
@@ -45,8 +92,30 @@ export const PlanView: React.FC<PlanViewProps> = ({
     return <span className={`px-2 py-0.5 rounded text-xs font-medium border ${badge.class}`}>{badge.text}</span>;
   };
 
+  // Helper to check if dependencies are met for a step
+  const checkDependenciesMet = (step: Step): { met: boolean; unmetDeps: Step[] } => {
+    if (!step.dependencies || step.dependencies.length === 0) {
+      return { met: true, unmetDeps: [] };
+    }
+
+    const unmetDeps: Step[] = [];
+    for (const depId of step.dependencies) {
+      const depStep = plan.steps?.find(s => s.id === depId);
+      if (depStep && depStep.status !== 'completed') {
+        unmetDeps.push(depStep);
+      }
+    }
+
+    return {
+      met: unmetDeps.length === 0,
+      unmetDeps
+    };
+  };
+
   const canApprove = (step: Step) => {
-    return ['planned', 'awaiting_feedback'].includes(step.status);
+    const isPending = ['planned', 'awaiting_feedback'].includes(step.status);
+    const { met: dependenciesMet } = checkDependenciesMet(step);
+    return isPending && dependenciesMet;
   };
 
   const handleApprove = async (stepId: string) => {
@@ -287,10 +356,31 @@ export const PlanView: React.FC<PlanViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {getStatusBadge(step.status)}
+                    {step.tools && step.tools.length > 0 && (
+                      <span className="px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded text-xs font-mono text-blue-300">
+                        {step.tools[0]}
+                      </span>
+                    )}
                   </div>
                   <p className="text-slate-100 text-sm font-medium mb-1 line-clamp-1">{step.action}</p>
                   <div className="text-xs text-slate-400">
                     <span>Agent: {step.agent}</span>
+                    {step.dependencies && step.dependencies.length > 0 && (
+                      <>
+                        {' • '}
+                        <span className="text-yellow-400">
+                          Depends on {step.dependencies.length} step{step.dependencies.length > 1 ? 's' : ''}
+                        </span>
+                        {(() => {
+                          const { met, unmetDeps } = checkDependenciesMet(step);
+                          return !met ? (
+                            <span className="ml-1 text-yellow-300">(⚠️ {unmetDeps.length} pending)</span>
+                          ) : (
+                            <span className="ml-1 text-green-400">(✓ ready)</span>
+                          );
+                        })()}
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -366,52 +456,117 @@ export const PlanView: React.FC<PlanViewProps> = ({
                 </div>
               </div>
 
-              {/* Agent Output with markdown rendering */}
-              {selectedStepData.agent_reply && (
-                <div className="flex-1 flex flex-col min-h-0">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Zap className="w-4 h-4 text-yellow-400" />
-                    <span className="text-xs font-semibold text-slate-400">RESULT</span>
-                  </div>
-                  <div 
-                    className="flex-1 p-5 bg-slate-900 rounded-lg border border-slate-600 overflow-y-auto shadow-inner custom-scrollbar prose prose-invert prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ 
-                      __html: marked(extractResult(selectedStepData.agent_reply)) as string
-                    }}
-                    style={{
-                      // Custom styles for markdown content
-                      fontSize: '0.875rem',
-                      lineHeight: '1.6',
-                    }}
-                  />
-                </div>
-              )}
+              {/* Agent Messages - show progress and final result */}
+              <div className="flex-1 flex flex-col min-h-0 space-y-3">
+                {stepMessages.length > 0 ? (
+                  (() => {
+                    // Check if we have a result message
+                    const hasResult = stepMessages.some(m => m.message_type === 'action_response');
+                    const hasError = stepMessages.some(m => m.message_type === 'error');
+                    
+                    return stepMessages.map((msg) => (
+                      <div key={msg.id} className="animate-fadeIn">
+                        {/* Progress Message - only show if no result/error yet */}
+                        {msg.message_type === 'progress' && !hasResult && !hasError && (
+                          <div className="flex items-start gap-2 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                            <Activity className="w-4 h-4 text-blue-400 mt-0.5 animate-pulse" />
+                            <div className="flex-1">
+                              <span className="text-xs font-semibold text-blue-300 block mb-1">IN PROGRESS</span>
+                              <p className="text-sm text-blue-100">{msg.content}</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Result Message */}
+                        {msg.message_type === 'action_response' && (
+                          <div className="flex-1 flex flex-col min-h-0">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Zap className="w-4 h-4 text-yellow-400" />
+                              <span className="text-xs font-semibold text-slate-400">RESULT</span>
+                            </div>
+                            <div 
+                              className="flex-1 p-5 bg-slate-900 rounded-lg border border-slate-600 overflow-y-auto shadow-inner custom-scrollbar prose prose-invert prose-sm max-w-none"
+                              dangerouslySetInnerHTML={{ 
+                                __html: marked(extractResult(msg.content)) as string
+                              }}
+                              style={{
+                                fontSize: '0.875rem',
+                                lineHeight: '1.6',
+                              }}
+                            />
+                          </div>
+                        )}
+                        
+                        {/* Error Message */}
+                        {msg.message_type === 'error' && (
+                          <div className="p-4 bg-error-500/10 border border-error-500/30 rounded-lg text-sm text-error-400 flex items-start gap-2">
+                            <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="block mb-1">Error Occurred</strong>
+                              <span>{msg.content}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ));
+                  })()
+                ) : (
+                  <>
+                    {/* Fallback to agent_reply if no messages */}
+                    {selectedStepData.agent_reply ? (
+                      <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Zap className="w-4 h-4 text-yellow-400" />
+                          <span className="text-xs font-semibold text-slate-400">RESULT</span>
+                        </div>
+                        <div 
+                          className="flex-1 p-5 bg-slate-900 rounded-lg border border-slate-600 overflow-y-auto shadow-inner custom-scrollbar prose prose-invert prose-sm max-w-none"
+                          dangerouslySetInnerHTML={{ 
+                            __html: marked(extractResult(selectedStepData.agent_reply)) as string
+                          }}
+                          style={{
+                            fontSize: '0.875rem',
+                            lineHeight: '1.6',
+                          }}
+                        />
+                      </div>
+                    ) : loadingMessages ? (
+                      <div className="text-center text-slate-500 text-sm py-8">
+                        <Activity className="w-8 h-8 mx-auto mb-2 opacity-50 animate-pulse" />
+                        <p>Loading...</p>
+                      </div>
+                    ) : (
+                      <div className="text-center text-slate-500 text-sm py-8">
+                        {selectedStepData.status === 'planned' || selectedStepData.status === 'awaiting_feedback' ? (
+                          <div>
+                            <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                            <p>Awaiting approval</p>
+                          </div>
+                        ) : selectedStepData.status === 'executing' || selectedStepData.status === 'approved' ? (
+                          <div>
+                            <Activity className="w-8 h-8 mx-auto mb-2 opacity-50 animate-pulse" />
+                            <p>Agent is working...</p>
+                          </div>
+                        ) : (
+                          <div>
+                            <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                            <p>No output yet</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
 
-              {/* Error Message with icon */}
-              {selectedStepData.error_message && (
+              {/* Legacy error message display */}
+              {selectedStepData.error_message && !stepMessages.some(m => m.message_type === 'error') && (
                 <div className="p-4 bg-error-500/10 border border-error-500/30 rounded-lg text-sm text-error-400 flex items-start gap-2">
                   <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                   <div>
                     <strong className="block mb-1">Error Occurred</strong>
                     <span>{selectedStepData.error_message}</span>
                   </div>
-                </div>
-              )}
-
-              {/* No output yet */}
-              {!selectedStepData.agent_reply && !selectedStepData.error_message && (
-                <div className="text-center text-slate-500 text-sm py-8">
-                  {canApprove(selectedStepData) ? (
-                    <div>
-                      <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p>Awaiting approval</p>
-                    </div>
-                  ) : (
-                    <div>
-                      <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p>No output yet</p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

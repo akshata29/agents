@@ -54,6 +54,23 @@ body {
   scrollbar-color: #475569 #1e293b;
 }
 
+/* Smooth scrolling */
+.custom-scrollbar {
+  scroll-behavior: smooth;
+}
+
+/* Additional utility classes */
+.bg-slate-750 {
+  background-color: #1a2332;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Markdown Content Styles */
 .prose {
   color: #cbd5e1;

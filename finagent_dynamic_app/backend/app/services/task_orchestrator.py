@@ -128,12 +128,21 @@ class TaskOrchestrator:
         
         # Create and register all execution agents
         for agent_name, agent_info in self.available_agents.items():
-            agent = self.agent_factory.create_agent(
-                agent_type=agent_name,  # Use the agent name as type (company, sec, etc.)
-                name=agent_name
-            )
-            await self.orchestrator.agent_registry.register_agent(agent_name, agent)
-            logger.info("Registered execution agent", agent_name=agent_name)
+            try:
+                logger.info(f"Creating agent: {agent_name}", agent_type=agent_name)
+                agent = self.agent_factory.create_agent(
+                    agent_type=agent_name,  # Use the agent name as type (company, sec, etc.)
+                    name=agent_name
+                )
+                logger.info(
+                    f"Agent created successfully: {agent_name}",
+                    agent_class=type(agent).__name__,
+                    agent_instance=str(agent)[:100]
+                )
+                await self.orchestrator.agent_registry.register_agent(agent_name, agent)
+                logger.info(f"Registered execution agent: {agent_name}", agent_class=type(agent).__name__)
+            except Exception as e:
+                logger.error(f"Failed to create/register agent: {agent_name}", error=str(e), exc_info=True)
         
         logger.info("TaskOrchestrator initialization complete")
 
@@ -170,7 +179,21 @@ class TaskOrchestrator:
         try:
             # ALWAYS create a new session for each plan/research task
             session_id = f"session-{uuid.uuid4().hex[:8]}"
-            user_id = "default-user"  # Since InputTask doesn't have user_id
+            user_id = input_task.user_id or "default-user"  # Use authenticated user_id
+            
+            # Extract ticker symbol from the objective intelligently
+            extracted_ticker = await self._extract_ticker_from_text(input_task.description)
+            
+            # Use extracted ticker if not explicitly provided
+            ticker = input_task.ticker or extracted_ticker
+            
+            logger.info(
+                "Ticker extraction",
+                input_ticker=input_task.ticker,
+                extracted_ticker=extracted_ticker,
+                final_ticker=ticker,
+                objective=input_task.description[:100]
+            )
             
             # Create new session
             session = Session(
@@ -179,46 +202,105 @@ class TaskOrchestrator:
                 user_id=user_id,
                 created_at=datetime.utcnow(),
                 metadata={
-                    "ticker": input_task.ticker,
+                    "ticker": ticker,
                     "objective": input_task.description[:200]  # Store truncated objective
-                } if input_task.ticker else {"objective": input_task.description[:200]}
+                } if ticker else {"objective": input_task.description[:200]}
             )
             await self.cosmos.create_session(session)
-            logger.info("Created new session for research task", session_id=session_id, ticker=input_task.ticker)
+            logger.info("Created new session for research task", session_id=session_id, ticker=ticker)
 
-            # Prepare agent descriptions for the planner
+            # Prepare agent descriptions for the planner with detailed tool information
             agent_descriptions = []
             for agent_name, agent_info in self.available_agents.items():
+                tools_desc = "\n    ".join(agent_info.get('tools_detailed', agent_info['tools']))
                 agent_descriptions.append(
-                    f"- {agent_name}: {agent_info['description']} (tools: {', '.join(agent_info['tools'])})"
+                    f"- {agent_name}:\n    Description: {agent_info['description']}\n    Available Tools:\n    {tools_desc}"
                 )
             
-            # Create detailed planning prompt with clear output format
-            planning_task = f"""
-            Create a comprehensive financial analysis plan for: {input_task.description}
+            # Determine step guidance based on objective keywords
+            objective_lower = input_task.description.lower()
             
-            Available Agents and Their Capabilities:
+            # Simple objectives (just stock quotes, prices, basic info)
+            if any(keyword in objective_lower for keyword in ["stock quote", "current price", "get quote", "stock price"]) and "forecast" not in objective_lower and "predict" not in objective_lower:
+                step_guidance = "Create ONLY 1 step to retrieve the requested stock price information"
+            # Comprehensive analysis ONLY when explicitly requested
+            elif any(keyword in objective_lower for keyword in ["comprehensive", "full analysis", "detailed analysis", "deep research", "complete analysis"]):
+                step_guidance = "Create 5-8 steps for thorough analysis across multiple dimensions (data gathering, analysis, synthesis)"
+            # Prediction/forecast requests need data + analysis
+            elif any(keyword in objective_lower for keyword in ["predict", "forecast", "stock movement", "price prediction"]):
+                step_guidance = "Create 2-4 steps: gather required data (news/financials/etc), then perform the requested prediction/forecast"
+            # News + something else
+            elif "news" in objective_lower and ("sentiment" in objective_lower or "summary" in objective_lower or "analyze" in objective_lower):
+                step_guidance = "Create 2 steps: (1) get news, (2) analyze/summarize as requested"
+            # Single data request
+            elif any(keyword in objective_lower for keyword in ["get news", "get recommendation", "get financial", "company profile", "company info"]) and objective_lower.count("get") == 1:
+                step_guidance = "Create ONLY 1-2 steps to retrieve the requested information"
+            # Default: minimal steps
+            else:
+                step_guidance = "Create 2-3 steps that DIRECTLY address the objective - do NOT add unrequested analysis"
+            
+            # Create detailed planning prompt with tool-level specificity
+            planning_task = f"""
+            Create a focused financial analysis plan for: {input_task.description}
+            
+            ⚠️ CRITICAL PLANNING RULES:
+            1. Create ONLY the steps explicitly mentioned or clearly required by the objective
+            2. DO NOT assume the user wants comprehensive analysis unless they specifically ask for it
+            3. DO NOT add extra data gathering, analysis, or prediction steps beyond what's requested
+            4. If the objective mentions specific tasks (e.g., "get news", "analyze sentiment", "predict price"), create steps ONLY for those tasks
+            5. Do NOT add recommendations, financial metrics, predictions, or other analysis unless the objective explicitly asks for them
+            6. Keep the plan minimal and focused - only what's needed to accomplish the stated objective
+            
+            Available Agents and Their Tools:
             {chr(10).join(agent_descriptions)}
             
+            CRITICAL FORMATTING RULES:
+            - ALWAYS include "Dependencies: [...]" for steps that need data from previous steps
+            - Data gathering steps (Step 1, 2, 3) have NO dependencies
+            - Analysis/forecast steps (Step 4+) MUST have Dependencies listing previous steps
+            - Format EXACTLY as: "Step N: Action. Agent: name. Function: tool. Dependencies: [1,2]"
+            
             Requirements:
-            1. Break down the analysis into 6-8 logical, actionable steps
-            2. Each step MUST be in EXACTLY this format: "Step N: [Specific Action] (Agent: agent_name)"
-            3. IMPORTANT: Use ONLY these exact agent names: company, sec, earnings, fundamentals, technicals, report
-            4. Example: "Step 1: Retrieve latest quarterly earnings report (Agent: company)"
-            5. Example: "Step 2: Analyze SEC filings and 10-K reports (Agent: sec)"
-            6. Assign each step to the most appropriate agent based on their capabilities listed above
-            7. Consider the logical flow and dependencies between steps
-            8. Focus on actionable research tasks that produce concrete outputs
-            9. NO meta-planning, headers, or separators - ONLY numbered action steps
+            1. {step_guidance}
+            2. Each step MUST specify BOTH the agent AND the specific tool/function to use
+            3. CRITICAL: Analysis/forecast steps MUST include "Dependencies: [step_numbers]"
+            4. ONLY create steps that are explicitly or clearly implied by the objective
+            
+            EXACT FORMAT EXAMPLES (use as reference for formatting only - create steps based on YOUR objective):
+            
+            Example 1 - Simple request: "Get news for Microsoft"
+            Step 1: Get latest company news for MSFT. Agent: company. Function: get_yahoo_finance_news
+            
+            Example 2 - News + Sentiment: "Get news and sentiment for Tesla"
+            Step 1: Get latest company news for TSLA. Agent: company. Function: get_yahoo_finance_news
+            Step 2: Analyze sentiment from news. Agent: report. Function: data_aggregation. Dependencies: [1]
+            
+            Example 3 - Stock prediction request: "Predict AAPL stock movement"
+            Step 1: Get latest company news for AAPL. Agent: company. Function: get_yahoo_finance_news
+            Step 2: Get analyst recommendations for AAPL. Agent: company. Function: get_recommendations
+            Step 3: Predict stock price movement. Agent: forecaster. Function: predict_stock_movement. Dependencies: [1,2]
+            
+            RULES:
+            - Use ONLY these exact agent names: company, sec, earnings, fundamentals, technicals, forecaster, report
+            - Specify the exact function/tool from the Available Tools list above
+            - Data gathering steps have NO Dependencies field
+            - Analysis/forecast steps MUST have Dependencies: [step_numbers] listing which steps they need data from
+            - NO meta-planning, headers, or separators - ONLY numbered action steps
             
             {"Ticker Symbol: " + input_task.ticker if input_task.ticker else ""}
             
-            OUTPUT FORMAT - Return ONLY the numbered steps, nothing else:
-            Step 1: [Action] (Agent: agent_name)
-            Step 2: [Action] (Agent: agent_name)
+            OUTPUT FORMAT - Return ONLY the numbered steps:
+            Step 1: [Action]. Agent: agent_name. Function: tool_name
+            Step 2: [Action]. Agent: agent_name. Function: tool_name  
+            Step 3: [Action]. Agent: agent_name. Function: tool_name. Dependencies: [1,2]
             ...
             
-            Remember: agent_name must be one of: company, sec, earnings, fundamentals, technicals, report
+            Remember: 
+            - Follow the objective literally - do NOT add comprehensive analysis unless requested
+            - Choose the right agent based on their description
+            - Choose the right tool/function based on what data you need
+            - Specify dependencies for steps that need data from previous steps
+            - Be specific: "Function: get_recommendations" not just "get recommendations"
             """
             
             logger.info("Creating plan using planning agent", task=input_task.description[:100])
@@ -256,13 +338,22 @@ class TaskOrchestrator:
                 execution_plan,
                 input_task,
                 session_id,
-                user_id
+                user_id,
+                ticker  # Pass the extracted/provided ticker
             )
 
             # Store plan and steps in Cosmos
             await self.cosmos.add_plan(plan)
             
             for step in steps:
+                logger.info(
+                    f"Saving step to Cosmos",
+                    step_id=step.id,
+                    action=step.action[:50],
+                    agent=step.agent.value,
+                    dependencies=step.dependencies,
+                    tools=step.tools
+                )
                 await self.cosmos.add_step(step)
 
             logger.info(
@@ -390,6 +481,15 @@ class TaskOrchestrator:
             if not step:
                 raise ValueError(f"Step {feedback.step_id} not found")
 
+            logger.info(
+                "Step retrieved from Cosmos",
+                step_id=step.id,
+                agent=step.agent.value,
+                dependencies=step.dependencies,
+                num_dependencies=len(step.dependencies) if step.dependencies else 0,
+                tools=step.tools
+            )
+
             # Update step based on feedback
             if feedback.approved:
                 # Execute the step using framework patterns
@@ -407,6 +507,9 @@ class TaskOrchestrator:
                     agent=step.agent.value  # Use agent.value to get string
                 )
 
+                # Check if all steps are complete and update plan status
+                await self._update_plan_status_if_complete(step.plan_id, step.session_id)
+
                 return result
 
             else:
@@ -417,6 +520,9 @@ class TaskOrchestrator:
                 await self.cosmos.update_step(step)
 
                 logger.info("Step rejected", step_id=step.id)
+
+                # Check if all steps are complete/rejected and update plan status
+                await self._update_plan_status_if_complete(step.plan_id, step.session_id)
 
                 return ActionResponse(
                     step_id=step.id,
@@ -434,6 +540,196 @@ class TaskOrchestrator:
                 step_id=feedback.step_id
             )
             raise
+
+    async def _check_dependencies(self, step: Step) -> tuple[bool, str]:
+        """
+        Check if all dependencies for a step are met.
+        
+        Args:
+            step: Step to check dependencies for
+            
+        Returns:
+            Tuple of (dependencies_met: bool, reason: str)
+        """
+        if not step.dependencies:
+            return True, "No dependencies"
+        
+        unmet_dependencies = []
+        for dep_id in step.dependencies:
+            try:
+                dep_step = await self.cosmos.get_step(dep_id, step.session_id)
+                if dep_step.status != StepStatus.COMPLETED:
+                    unmet_dependencies.append(f"{dep_step.action[:50]} (Status: {dep_step.status})")
+            except Exception as e:
+                logger.warning(f"Could not find dependency step {dep_id}", error=str(e))
+                unmet_dependencies.append(f"Unknown step {dep_id}")
+        
+        if unmet_dependencies:
+            reason = f"Waiting for dependencies: {', '.join(unmet_dependencies)}"
+            return False, reason
+        
+        return True, "All dependencies met"
+
+    async def _get_dependency_artifacts(self, step: Step) -> Dict[str, Any]:
+        """
+        Collect artifacts from all dependency steps.
+        
+        Args:
+            step: Step to collect dependency artifacts for
+            
+        Returns:
+            Dictionary containing all artifacts from dependent steps
+        """
+        all_artifacts = []
+        
+        logger.info(
+            f"Collecting dependency artifacts for step {step.id}",
+            num_dependencies=len(step.dependencies),
+            dependency_ids=step.dependencies
+        )
+        
+        for dep_id in step.dependencies:
+            try:
+                dep_step = await self.cosmos.get_step(dep_id)
+                logger.info(
+                    f"Processing dependency step {dep_id}",
+                    dep_action=dep_step.action[:50],
+                    dep_agent=dep_step.agent.value,
+                    dep_status=dep_step.status,
+                    has_reply=bool(dep_step.agent_reply),
+                    dep_tools=dep_step.tools
+                )
+                
+                # Get messages from the dependency step that contain artifacts
+                messages = await self.cosmos.get_messages(
+                    session_id=dep_step.session_id,
+                    plan_id=dep_step.plan_id,
+                    step_id=dep_id
+                )
+                
+                logger.info(f"Found {len(messages)} messages for dependency step {dep_id}")
+                
+                # Extract artifacts from messages
+                for msg in messages:
+                    if msg.metadata and "artifact" in msg.metadata:
+                        all_artifacts.append(msg.metadata["artifact"])
+                        logger.info(f"Found artifact in message metadata")
+                
+                # Also include the step's result as an artifact
+                if dep_step.agent_reply:
+                    artifact = {
+                        "type": "step_result",
+                        "step_id": dep_id,
+                        "agent": dep_step.agent.value,
+                        "action": dep_step.action,
+                        "content": dep_step.agent_reply,
+                        "tools": dep_step.tools
+                    }
+                    all_artifacts.append(artifact)
+                    logger.info(
+                        f"Added step result as artifact",
+                        agent=dep_step.agent.value,
+                        tools=dep_step.tools,
+                        content_length=len(dep_step.agent_reply)
+                    )
+                    
+            except Exception as e:
+                logger.error(f"Could not retrieve artifacts from dependency step {dep_id}", error=str(e), exc_info=True)
+        
+        logger.info(
+            f"Total artifacts collected",
+            num_artifacts=len(all_artifacts),
+            step_id=step.id
+        )
+        
+        return {"dependency_artifacts": all_artifacts}
+
+    def _is_synthesis_agent(self, step: Step) -> bool:
+        """
+        Determine if this step is using a synthesis agent that needs comprehensive context.
+        Synthesis agents (Forecaster, Report, Summarizer) analyze and combine outputs from multiple previous steps.
+        
+        Args:
+            step: Step to check
+            
+        Returns:
+            True if this is a synthesis agent
+        """
+        synthesis_agents = [AgentType.FORECASTER, AgentType.REPORT, AgentType.SUMMARIZER]
+        is_synthesis = step.agent in synthesis_agents
+        
+        logger.info(
+            f"Checking if synthesis agent",
+            step_id=step.id,
+            agent=step.agent.value,
+            is_synthesis=is_synthesis
+        )
+        
+        return is_synthesis
+
+    async def _get_session_context(self, step: Step) -> Dict[str, Any]:
+        """
+        Collect outputs from ALL previous completed steps in the session.
+        This is used for synthesis agents (Forecaster, Report) that need comprehensive context.
+        
+        Args:
+            step: Current step being executed
+            
+        Returns:
+            Dictionary containing all previous step results
+        """
+        logger.info(
+            f"Collecting session context for synthesis agent",
+            step_id=step.id,
+            agent=step.agent.value,
+            plan_id=step.plan_id
+        )
+        
+        # Get all steps in the plan
+        all_steps = await self.cosmos.get_steps_by_plan(step.plan_id, step.session_id)
+        
+        # Filter to completed steps that come before this step
+        previous_steps = [
+            s for s in all_steps 
+            if s.status == StepStatus.COMPLETED and s.order < step.order
+        ]
+        
+        logger.info(
+            f"Found {len(previous_steps)} previous completed steps",
+            step_id=step.id,
+            current_order=step.order,
+            all_steps_count=len(all_steps)
+        )
+        
+        # Collect all outputs
+        session_artifacts = []
+        for prev_step in sorted(previous_steps, key=lambda s: s.order):
+            if prev_step.agent_reply:
+                artifact = {
+                    "type": "step_result",
+                    "step_id": prev_step.id,
+                    "step_order": prev_step.order,
+                    "agent": prev_step.agent.value,
+                    "action": prev_step.action,
+                    "content": prev_step.agent_reply,
+                    "tools": prev_step.tools or []
+                }
+                session_artifacts.append(artifact)
+                logger.info(
+                    f"Added session context from step {prev_step.order}",
+                    agent=prev_step.agent.value,
+                    tools=prev_step.tools,
+                    content_length=len(prev_step.agent_reply),
+                    content_preview=prev_step.agent_reply[:100] if prev_step.agent_reply else ""
+                )
+        
+        logger.info(
+            f"Total session artifacts collected for synthesis",
+            num_artifacts=len(session_artifacts),
+            step_id=step.id
+        )
+        
+        return {"session_context": session_artifacts}
 
     async def _execute_step(
         self,
@@ -458,13 +754,72 @@ class TaskOrchestrator:
         logger.info(
             "Executing step",
             step_id=step.id,
-            agent=step.agent.value,  # Use agent.value
-            description=step.action[:100]  # Use 'action' not 'description'
+            agent=step.agent.value,
+            description=step.action[:100],
+            dependencies=step.dependencies,
+            num_dependencies=len(step.dependencies) if step.dependencies else 0,
+            tools=step.tools
         )
 
         try:
-            # Build task description with context (ticker, scope, etc.)
-            task = await self._build_task_from_step(step, feedback)
+            # Check if dependencies are met
+            deps_met, dep_reason = await self._check_dependencies(step)
+            if not deps_met:
+                logger.warning(
+                    "Step dependencies not met",
+                    step_id=step.id,
+                    reason=dep_reason
+                )
+                return ActionResponse(
+                    step_id=step.id,
+                    plan_id=step.plan_id,
+                    session_id=feedback.session_id,
+                    success=False,
+                    result=f"Cannot execute step: {dep_reason}",
+                    metadata={"dependencies_unmet": True, "reason": dep_reason}
+                )
+            
+            # Get the actual agent instance from the registry
+            agent_name = step.agent.value
+            agent_instance = await self.orchestrator.agent_registry.get_agent(agent_name)
+            
+            logger.info(
+                f"Retrieved agent from registry: {agent_name}",
+                agent_class=type(agent_instance).__name__ if agent_instance else "None",
+                agent_type=str(type(agent_instance)),
+                has_mcp=hasattr(agent_instance, 'mcp_server_url') if agent_instance else False
+            )
+            
+            # Build task description and context with ticker
+            task, context = await self._build_task_and_context_from_step(step, feedback)
+            
+            # Add comprehensive context based on agent type
+            if self._is_synthesis_agent(step):
+                # Synthesis agents (Forecaster, Report) need ALL previous step outputs
+                session_ctx = await self._get_session_context(step)
+                context.update(session_ctx)
+                logger.info(
+                    "Added comprehensive session context for synthesis agent",
+                    step_id=step.id,
+                    agent=step.agent.value,
+                    num_session_artifacts=len(session_ctx.get("session_context", []))
+                )
+            elif step.dependencies:
+                # Regular agents only need explicit dependency artifacts
+                dep_artifacts = await self._get_dependency_artifacts(step)
+                context.update(dep_artifacts)
+                logger.info(
+                    "Added dependency artifacts to context",
+                    step_id=step.id,
+                    num_artifacts=len(dep_artifacts.get("dependency_artifacts", []))
+                )
+            
+            logger.info(
+                "Task and context built for step execution",
+                step_id=step.id,
+                ticker=context.get('ticker'),
+                context_keys=list(context.keys())
+            )
 
             # Get tools for the agent(s) involved
             tools = self._get_tools_for_step(step)
@@ -472,26 +827,76 @@ class TaskOrchestrator:
             # Determine if step requires multi-agent collaboration
             requires_collaboration = self._requires_multi_agent_collaboration(step)
             
-            if requires_collaboration:
-                # Use GroupChatPattern for multi-agent collaboration
-                pattern = self._create_groupchat_pattern(step)
-                logger.info("Using GroupChatPattern for multi-agent collaboration", step_id=step.id)
-            else:
-                # Use HandoffPattern for single-agent with delegation capability
-                pattern = self._create_handoff_pattern(step)
-                logger.info("Using HandoffPattern for single-agent execution", step_id=step.id)
-
-            # Execute via orchestrator
-            result = await self.orchestrator.execute(
-                task=task,
-                pattern=pattern,
-                tools=tools,  # Pass agent-specific tools
-                metadata={
-                    "step_id": step.id,
-                    "plan_id": step.plan_id,
-                    "session_id": feedback.session_id
-                }
+            # Update step status to EXECUTING and add progress message
+            step.status = StepStatus.EXECUTING
+            await self.cosmos.update_step(step)
+            logger.info(
+                "Step status updated to EXECUTING",
+                step_id=step.id,
+                status=step.status
             )
+            
+            # Store progress message
+            progress_message = AgentMessage(
+                id=str(uuid.uuid4()),
+                data_type=DataType.MESSAGE,
+                session_id=feedback.session_id,
+                user_id=step.user_id,
+                plan_id=step.plan_id,
+                step_id=step.id,
+                content=f"🔄 {agent_name} is analyzing {context.get('ticker', 'data')}...",
+                source=step.agent.value,
+                message_type="progress",
+                created_at=datetime.utcnow(),
+                metadata={"progress": True}
+            )
+            await self.cosmos.add_message(progress_message)
+            logger.info(
+                "Progress message stored",
+                step_id=step.id,
+                message_id=progress_message.id,
+                content_preview=progress_message.content[:50]
+            )
+            
+            # For single-agent execution with our custom agents, call directly with context
+            if not requires_collaboration and agent_instance and hasattr(agent_instance, 'process'):
+                logger.info(
+                    f"Calling agent.process() directly with context",
+                    agent_name=agent_name,
+                    ticker=context.get('ticker'),
+                    context_dict=context,
+                    task_preview=task[:100]
+                )
+                result_text = await agent_instance.process(task, context)
+                logger.info(
+                    f"Agent.process() returned",
+                    agent_name=agent_name,
+                    result_length=len(result_text) if result_text else 0
+                )
+                result = type('Result', (), {'result': result_text, 'metadata': {}})()
+            else:
+                # Use patterns for collaboration or generic agents
+                if requires_collaboration:
+                    # Use GroupChatPattern for multi-agent collaboration
+                    pattern = self._create_groupchat_pattern(step)
+                    logger.info("Using GroupChatPattern for multi-agent collaboration", step_id=step.id)
+                else:
+                    # Use HandoffPattern for single-agent with delegation capability
+                    pattern = self._create_handoff_pattern(step)
+                    logger.info("Using HandoffPattern for single-agent execution", step_id=step.id)
+
+                # Execute via orchestrator
+                result = await self.orchestrator.execute(
+                    task=task,
+                    pattern=pattern,
+                    tools=tools,  # Pass agent-specific tools
+                    metadata={
+                        "step_id": step.id,
+                        "plan_id": step.plan_id,
+                        "session_id": feedback.session_id,
+                        **context  # Include ticker and scope in metadata
+                    }
+                )
 
             # Store agent message in Cosmos
             message = AgentMessage(
@@ -511,6 +916,10 @@ class TaskOrchestrator:
             )
 
             await self.cosmos.add_message(message)
+            
+            # Update step status to COMPLETED
+            step.status = StepStatus.COMPLETED
+            await self.cosmos.update_step(step)
 
             logger.info(
                 "Step execution completed",
@@ -551,6 +960,10 @@ class TaskOrchestrator:
             )
 
             await self.cosmos.add_message(error_message)
+            
+            # Update step status to FAILED
+            step.status = StepStatus.FAILED
+            await self.cosmos.update_step(step)
 
             return ActionResponse(
                 step_id=step.id,
@@ -561,12 +974,73 @@ class TaskOrchestrator:
                 error=str(e)
             )
 
+    async def _update_plan_status_if_complete(self, plan_id: str, session_id: str) -> None:
+        """
+        Check if all steps in a plan are complete and update plan status accordingly.
+        
+        Args:
+            plan_id: The plan ID to check
+            session_id: The session ID
+        """
+        try:
+            # Get the plan
+            plan = await self.cosmos.get_plan(plan_id, session_id)
+            if not plan:
+                logger.warning("Plan not found for status update", plan_id=plan_id)
+                return
+            
+            # Get all steps for this plan
+            steps = await self.cosmos.get_steps_by_plan(plan_id, session_id)
+            if not steps:
+                logger.warning("No steps found for plan", plan_id=plan_id)
+                return
+            
+            # Count step statuses
+            total_steps = len(steps)
+            completed_steps = sum(1 for s in steps if s.status == StepStatus.COMPLETED)
+            failed_steps = sum(1 for s in steps if s.status == StepStatus.FAILED)
+            rejected_steps = sum(1 for s in steps if s.status == StepStatus.REJECTED)
+            
+            # Update plan metadata
+            plan.total_steps = total_steps
+            plan.completed_steps = completed_steps
+            plan.failed_steps = failed_steps
+            
+            # Determine overall plan status
+            if completed_steps == total_steps:
+                # All steps completed successfully
+                plan.overall_status = PlanStatus.COMPLETED
+                logger.info("Plan completed - all steps finished", plan_id=plan_id, total_steps=total_steps)
+            elif failed_steps > 0 or rejected_steps > 0:
+                # At least one step failed or was rejected
+                if completed_steps + failed_steps + rejected_steps == total_steps:
+                    # All steps are done (some failed/rejected)
+                    plan.overall_status = PlanStatus.FAILED
+                    logger.info("Plan failed - some steps failed or rejected", 
+                              plan_id=plan_id, 
+                              failed=failed_steps, 
+                              rejected=rejected_steps)
+            # else: keep IN_PROGRESS if there are still pending steps
+            
+            # Update the plan in Cosmos
+            await self.cosmos.update_plan(plan)
+            
+            logger.info("Plan status updated", 
+                       plan_id=plan_id, 
+                       status=plan.overall_status,
+                       completed=completed_steps,
+                       total=total_steps)
+            
+        except Exception as e:
+            logger.error("Failed to update plan status", plan_id=plan_id, error=str(e))
+
     def _convert_framework_plan_to_model(
         self,
         execution_plan: ExecutionPlan,
         input_task: InputTask,
         session_id: str,
-        user_id: str
+        user_id: str,
+        ticker: Optional[str] = None
     ) -> tuple[Plan, List[Step]]:
         """
         Convert framework's ExecutionPlan to our Plan and Step models.
@@ -576,6 +1050,7 @@ class TaskOrchestrator:
             input_task: Original user input
             session_id: Session identifier
             user_id: User identifier
+            ticker: Extracted ticker symbol
             
         Returns:
             Tuple of (Plan model, List of Step models)
@@ -617,7 +1092,9 @@ class TaskOrchestrator:
                 "Converting step",
                 step_number=step_counter,
                 action=action_text[:50],
-                agent=agent_name
+                agent=agent_name,
+                dependencies=framework_step.dependencies,
+                tools=framework_step.tools
             )
             
             step = Step(
@@ -630,7 +1107,9 @@ class TaskOrchestrator:
                 agent=self._map_agent_name_to_type(agent_name),
                 status=StepStatus.PLANNED,
                 order=step_counter,
-                created_at=datetime.utcnow()
+                timestamp=datetime.utcnow(),
+                dependencies=framework_step.dependencies,  # Preserve dependencies
+                tools=framework_step.tools  # Preserve tools
             )
             steps.append(step)
         
@@ -649,39 +1128,42 @@ class TaskOrchestrator:
             initial_goal=input_task.description,
             overall_status=PlanStatus.IN_PROGRESS,  # Use IN_PROGRESS not PENDING_APPROVAL
             total_steps=len(steps),
-            ticker=input_task.ticker,
+            ticker=ticker,  # Use the extracted/provided ticker
             created_at=datetime.utcnow()
         )
 
         return plan, steps
 
-    async def _build_task_from_step(
+    async def _build_task_and_context_from_step(
         self,
         step: Step,
         feedback: HumanFeedback
-    ) -> str:
+    ) -> tuple[str, Dict[str, Any]]:
         """
-        Build task description for agent execution with context.
+        Build task description and context for agent execution.
         
         Args:
             step: Step to execute
             feedback: User feedback with optional context
             
         Returns:
-            Task description string with ticker and scope context
+            Tuple of (task description string, context dictionary with ticker/scope/previous_results)
         """
         task_parts = []
+        context = {}
         
         # Try to get plan context for ticker/scope information
         try:
             plan = await self.cosmos.get_plan(step.plan_id, step.session_id)
             if plan:
-                # Add ticker context if available
+                # Add ticker to context if available
                 if plan.ticker:
+                    context['ticker'] = plan.ticker
                     task_parts.append(f"Stock Ticker: {plan.ticker}")
                 
                 # Add scope context if available
                 if plan.scope:
+                    context['scope'] = plan.scope
                     task_parts.append(f"Analysis Scope: {', '.join(plan.scope)}")
                 
                 # Add separator if we added context
@@ -690,6 +1172,31 @@ class TaskOrchestrator:
         except Exception as e:
             logger.warning(f"Could not fetch plan context: {str(e)}")
         
+        # For Report agent, gather all previous step results
+        if step.agent == AgentType.REPORT:
+            try:
+                # Get all messages for this plan from previous steps
+                all_messages = await self.cosmos.get_messages_by_plan(step.plan_id)
+                
+                # Filter to only action_response messages (agent outputs)
+                previous_results = []
+                for msg in all_messages:
+                    if msg.message_type == "action_response" and msg.step_id != step.id:
+                        previous_results.append({
+                            "agent": msg.source,
+                            "content": msg.content
+                        })
+                
+                if previous_results:
+                    context['previous_results'] = previous_results
+                    logger.info(
+                        "Added previous results to Report agent context",
+                        result_count=len(previous_results),
+                        agents=[r['agent'] for r in previous_results]
+                    )
+            except Exception as e:
+                logger.warning(f"Could not fetch previous results for Report agent: {str(e)}")
+        
         # Add the main action
         task_parts.append(step.action)
 
@@ -697,7 +1204,16 @@ class TaskOrchestrator:
         if feedback.human_feedback:
             task_parts.append(f"\nUser feedback: {feedback.human_feedback}")
 
-        return "\n".join(task_parts)
+        task_description = "\n".join(task_parts)
+        
+        logger.info(
+            "Built task and context",
+            step_id=step.id,
+            ticker=context.get('ticker'),
+            has_scope=bool(context.get('scope'))
+        )
+        
+        return task_description, context
 
     def _get_tools_for_step(self, step: Step) -> List[str]:
         """
@@ -761,24 +1277,113 @@ class TaskOrchestrator:
         
         def create_financial_agent(name: str, config: Dict[str, Any]):
             """Factory function for creating financial domain agents."""
-            from framework.agents.factory import MicrosoftAgentWrapper
-            from agent_framework import ChatAgent
+            logger.info(f"create_financial_agent called for: {name}", config_keys=list(config.keys()))
             
-            # Create Microsoft Agent Framework ChatAgent
-            chat_agent = ChatAgent(
-                name=name,
-                chat_client=self.agent_factory._chat_client,
-                description=config.get("description", f"Financial agent: {name}"),
-                instruction=self._get_agent_instructions(name, config)
-            )
+            # Import our actual custom agent classes
+            try:
+                from ..agents import (
+                    CompanyAgent, SECAgent, EarningsAgent,
+                    FundamentalsAgent, TechnicalsAgent, ReportAgent, ForecasterAgent, SummarizerAgent
+                )
+                logger.info(f"Successfully imported custom agent classes for {name}")
+            except Exception as e:
+                logger.error(f"Failed to import custom agent classes for {name}", error=str(e), exc_info=True)
+                raise
             
-            # Wrap in our BaseAgent interface
-            return MicrosoftAgentWrapper(
-                name=name,
-                chat_agent=chat_agent,
-                description=config.get("description", ""),
-                settings=self.agent_factory.settings
-            )
+            # Use the framework's AzureOpenAIChatClient for consistency
+            from agent_framework.azure import AzureOpenAIChatClient
+            
+            try:
+                azure_chat_client = AzureOpenAIChatClient(
+                    endpoint=self.settings.AZURE_OPENAI_ENDPOINT,
+                    api_key=self.settings.AZURE_OPENAI_API_KEY,
+                    deployment_name=self.settings.AZURE_OPENAI_DEPLOYMENT,
+                    api_version=self.settings.AZURE_OPENAI_API_VERSION
+                )
+                logger.info(f"AzureOpenAIChatClient created for {name}")
+            except Exception as e:
+                logger.error(f"Failed to create AzureOpenAIChatClient for {name}", error=str(e), exc_info=True)
+                raise
+            
+            # Map agent names to actual classes
+            agent_classes = {
+                "company": CompanyAgent,
+                "sec": SECAgent,
+                "earnings": EarningsAgent,
+                "fundamentals": FundamentalsAgent,
+                "technicals": TechnicalsAgent,
+                "report": ReportAgent,
+                "forecaster": ForecasterAgent,
+                "summarizer": SummarizerAgent
+            }
+            
+            # Normalize agent name (remove _Agent suffix if present)
+            normalized_name = name.lower().replace("_agent", "")
+            agent_class = agent_classes.get(normalized_name)
+            
+            if not agent_class:
+                logger.warning(f"Unknown agent type: {name} (normalized: {normalized_name}), falling back to generic agent")
+                from framework.agents.factory import MicrosoftAgentWrapper
+                from agent_framework import ChatAgent
+                
+                chat_agent = ChatAgent(
+                    name=name,
+                    chat_client=self.agent_factory._chat_client,
+                    description=config.get("description", f"Financial agent: {name}"),
+                    instruction=self._get_agent_instructions(name, config)
+                )
+                
+                return MicrosoftAgentWrapper(
+                    name=name,
+                    chat_agent=chat_agent,
+                    description=config.get("description", ""),
+                    settings=self.agent_factory.settings
+                )
+            
+            # Create the actual specialized agent with proper configuration
+            agent_params = {
+                "name": f"{normalized_name.capitalize()}Agent",
+                "description": config.get("description", ""),
+                "chat_client": azure_chat_client,  # Pass chat_client instead of azure_client
+                "model": self.settings.AZURE_OPENAI_DEPLOYMENT
+            }
+            
+            # Add specific params for CompanyAgent
+            if normalized_name == "company":
+                agent_params["fmp_api_key"] = self.settings.FMP_API_KEY
+                agent_params["mcp_server_url"] = self.settings.YAHOO_FINANCE_MCP_URL
+                logger.info(
+                    f"CompanyAgent params prepared",
+                    fmp_key_set=bool(self.settings.FMP_API_KEY),
+                    mcp_url=self.settings.YAHOO_FINANCE_MCP_URL
+                )
+            
+            # Add FMP API key for agents that need it
+            if normalized_name in ["fundamentals", "earnings", "sec"]:
+                agent_params["fmp_api_key"] = self.settings.FMP_API_KEY
+                logger.info(
+                    f"{normalized_name.capitalize()}Agent params prepared",
+                    fmp_key_set=bool(self.settings.FMP_API_KEY)
+                )
+            
+            # Create the agent instance
+            try:
+                agent = agent_class(**agent_params)
+                logger.info(
+                    f"Created custom agent instance: {name}",
+                    agent_class=agent_class.__name__,
+                    agent_type=str(type(agent)),
+                    has_mcp=hasattr(agent, 'mcp_server_url')
+                )
+                return agent
+            except Exception as e:
+                logger.error(
+                    f"Failed to instantiate {agent_class.__name__}",
+                    error=str(e),
+                    agent_params=list(agent_params.keys()),
+                    exc_info=True
+                )
+                raise
         
         # Register each custom agent type
         for agent_name, agent_info in self.available_agents.items():
@@ -846,39 +1451,140 @@ Your responsibilities:
 
 
     def _get_available_agents(self) -> Dict[str, Dict[str, Any]]:
-        """Get available agents and their capabilities."""
+        """Get available agents and their capabilities with detailed tool information."""
+        # Import agents to get their tool info
+        from ..agents.company_agent import CompanyAgent
+        from ..agents.forecaster_agent import ForecasterAgent
+        
+        company_tools = CompanyAgent.get_tools_info()
+        company_tools_list = [f"{name}: {info['description']}" for name, info in company_tools.items()]
+        
+        forecaster_tools = ForecasterAgent.get_tools_info()
+        forecaster_tools_list = [f"{name}: {info['description']}" for name, info in forecaster_tools.items()]
+        
         return {
             AgentType.COMPANY.value: {
                 "type": AgentType.COMPANY,
-                "description": "Company profile and market data analysis",
-                "tools": ["company_profile", "stock_quotes", "market_data"]
+                "description": "Company intelligence via Yahoo Finance MCP Server and FMP API",
+                "tools": list(company_tools.keys()),
+                "tools_detailed": company_tools_list
             },
             AgentType.SEC.value: {
                 "type": AgentType.SEC,
                 "description": "SEC filings and regulatory document analysis",
-                "tools": ["sec_filings", "form_10k", "form_10q"]
+                "tools": ["sec_filings", "form_10k", "form_10q"],
+                "tools_detailed": ["sec_filings: Retrieve and analyze SEC filings"]
             },
             AgentType.EARNINGS.value: {
                 "type": AgentType.EARNINGS,
                 "description": "Earnings reports and call transcript analysis",
-                "tools": ["earnings_data", "transcripts", "earnings_calendar"]
+                "tools": ["earnings_data", "transcripts", "earnings_calendar"],
+                "tools_detailed": ["transcripts: Analyze earnings call transcripts"]
             },
             AgentType.FUNDAMENTALS.value: {
                 "type": AgentType.FUNDAMENTALS,
                 "description": "Fundamental financial analysis and metrics",
-                "tools": ["financial_ratios", "income_statement", "balance_sheet"]
+                "tools": ["financial_ratios", "income_statement", "balance_sheet"],
+                "tools_detailed": ["financial_ratios: Calculate and analyze financial ratios"]
             },
             AgentType.TECHNICALS.value: {
                 "type": AgentType.TECHNICALS,
                 "description": "Technical analysis and chart patterns",
-                "tools": ["price_data", "indicators", "chart_patterns"]
+                "tools": ["price_data", "indicators", "chart_patterns"],
+                "tools_detailed": ["indicators: Calculate technical indicators"]
+            },
+            AgentType.FORECASTER.value: {
+                "type": AgentType.FORECASTER,
+                "description": "Stock price forecasting and prediction using sentiment analysis and trend prediction",
+                "tools": list(forecaster_tools.keys()),
+                "tools_detailed": forecaster_tools_list
+            },
+            AgentType.SUMMARIZER.value: {
+                "type": AgentType.SUMMARIZER,
+                "description": "Summarizes information and generates focused summaries from provided context. Use for sentiment analysis, news summaries, and data synthesis without additional structure",
+                "tools": ["summarize_information", "generate_sentiment_summary", "create_news_summary", "synthesize_findings"],
+                "tools_detailed": [
+                    "summarize_information: Create concise summaries from context",
+                    "generate_sentiment_summary: Analyze and summarize sentiment from news/data",
+                    "create_news_summary: Summarize news articles",
+                    "synthesize_findings: Combine insights from multiple sources"
+                ]
             },
             AgentType.REPORT.value: {
                 "type": AgentType.REPORT,
-                "description": "Report generation and synthesis",
-                "tools": ["document_generation", "data_aggregation"]
+                "description": "Report generation, synthesis, and summarization of analysis from other agents. Use this for comprehensive research briefs and structured reports",
+                "tools": ["document_generation", "data_aggregation", "summary_creation", "pattern_analysis"],
+                "tools_detailed": [
+                    "document_generation: Create comprehensive reports",
+                    "data_aggregation: Combine data from multiple sources",
+                    "pattern_analysis: Identify positive developments, concerns, and key factors from gathered data"
+                ]
             }
         }
+    
+    async def _extract_ticker_from_text(self, text: str) -> Optional[str]:
+        """
+        Intelligently extract ticker symbol from text using LLM.
+        Handles company names, ticker symbols, and various formats.
+        
+        Args:
+            text: Input text that may contain a company name or ticker symbol
+            
+        Returns:
+            Extracted ticker symbol or None
+        """
+        try:
+            from agent_framework.azure import AzureOpenAIChatClient
+            from agent_framework import ChatMessage, Role
+            
+            extraction_prompt = f"""Extract the stock ticker symbol from the following text. 
+The text may contain:
+- A ticker symbol (e.g., "TSLA", "AAPL", "MSFT")
+- A company name (e.g., "Tesla", "Apple Inc.", "Microsoft Corporation")
+- Both ticker and company name
+
+If you find a ticker or company name, respond with ONLY the ticker symbol in uppercase.
+If no company or ticker is mentioned, respond with "NONE".
+
+Text: {text}
+
+Ticker symbol (uppercase only):"""
+
+            # Use Microsoft Agent Framework's AzureOpenAIChatClient
+            chat_client = AzureOpenAIChatClient(
+                endpoint=self.settings.AZURE_OPENAI_ENDPOINT,
+                api_key=self.settings.AZURE_OPENAI_API_KEY,
+                deployment_name=self.settings.AZURE_OPENAI_DEPLOYMENT,
+                api_version=self.settings.AZURE_OPENAI_API_VERSION
+            )
+            
+            # Create messages for the chat
+            messages = [
+                ChatMessage(role=Role.SYSTEM, text="You are a financial assistant that extracts stock ticker symbols."),
+                ChatMessage(role=Role.USER, text=extraction_prompt)
+            ]
+            
+            # Call the chat client using get_response
+            response = await chat_client.get_response(messages=messages, temperature=0, max_tokens=10)
+            
+            # Extract ticker from response (ChatResponse has .text property directly)
+            ticker = response.text.strip().upper()
+            
+            # Validate response
+            if ticker and ticker != "NONE" and 1 <= len(ticker) <= 5 and ticker.isalpha():
+                logger.info(
+                    "LLM extracted ticker from text",
+                    ticker=ticker,
+                    original_text=text[:100]
+                )
+                return ticker
+            
+            logger.info("No valid ticker extracted by LLM", text=text[:100], llm_response=ticker)
+            return None
+            
+        except Exception as e:
+            logger.error("Failed to extract ticker using LLM", error=str(e), text=text[:100], exc_info=True)
+            return None
 
     def _get_available_tools(self) -> List[str]:
         """Get list of all available tools across agents."""
@@ -901,7 +1607,12 @@ Your responsibilities:
             return "fundamentals"
         elif any(keyword in description_lower for keyword in ["technical", "chart", "indicator"]):
             return "technicals"
-        elif any(keyword in description_lower for keyword in ["report", "summary", "synthesis"]):
+        elif any(keyword in description_lower for keyword in ["forecast", "predict", "stock movement", "stock price"]):
+            return "forecaster"
+        elif any(keyword in description_lower for keyword in ["sentiment", "summarize", "summary"]):
+            return "summarizer"
+        elif any(keyword in description_lower for keyword in ["report", "research brief", "comprehensive analysis"]):
+            return "report"
             return "report"
         
         return "generic"  # Fallback
@@ -923,6 +1634,8 @@ Your responsibilities:
             "earnings": AgentType.EARNINGS,
             "fundamentals": AgentType.FUNDAMENTALS,
             "technicals": AgentType.TECHNICALS,
+            "forecaster": AgentType.FORECASTER,
+            "summarizer": AgentType.SUMMARIZER,
             "report": AgentType.REPORT,
             "planner": AgentType.PLANNER,
             "generic": AgentType.GENERIC
@@ -941,22 +1654,20 @@ Your responsibilities:
         
         Collaboration indicators:
         - Keywords like "compare", "synthesize", "integrate", "correlate"
-        - Report generation that needs multiple data sources
         - Analysis requiring multiple perspectives
+        
+        Note: Report agent does NOT require collaboration - it synthesizes
+        existing results from previous steps via messages.
         """
         action_lower = step.action.lower()
         
         collaboration_keywords = [
-            "compare", "contrast", "synthesize", "integrate", "correlate",
+            "compare", "contrast", "integrate", "correlate",
             "combine", "merge", "cross-reference", "reconcile", "validate against"
         ]
         
-        # Check if action requires collaboration
-        if any(keyword in action_lower for keyword in collaboration_keywords):
-            return True
-        
-        # Report steps often need multiple agents
-        if step.agent == AgentType.REPORT and any(word in action_lower for word in ["comprehensive", "detailed", "complete"]):
+        # Check if action requires collaboration (but not for report agent)
+        if step.agent != AgentType.REPORT and any(keyword in action_lower for keyword in collaboration_keywords):
             return True
         
         return False
@@ -1008,18 +1719,18 @@ Your responsibilities:
         
         # Add company agent for company-specific data
         if "company" in action_lower or "profile" in action_lower:
-            if "company" not in agents:
-                agents.append("company")
+            if AgentType.COMPANY.value not in agents:
+                agents.append(AgentType.COMPANY.value)
         
         # Add fundamentals for financial analysis
         if any(word in action_lower for word in ["financial", "ratio", "metric", "valuation"]):
-            if "fundamentals" not in agents:
-                agents.append("fundamentals")
+            if AgentType.FUNDAMENTALS.value not in agents:
+                agents.append(AgentType.FUNDAMENTALS.value)
         
-        # Add report agent for synthesis tasks
+        # Add report agent for synthesis tasks - but don't add if it's already the assigned agent
         if step.agent == AgentType.REPORT or "synthesize" in action_lower:
-            if "report" not in agents:
-                agents.append("report")
+            # Report agent is already in the list from step.agent.value, so skip
+            pass
         
         # Limit to 4 agents maximum
         return agents[:4]
@@ -1028,7 +1739,11 @@ Your responsibilities:
         """
         Parse plan text from ReAct reasoning into ExecutionPlan.
         
-        Extracts step descriptions and agent assignments from the text.
+        Extracts step descriptions, agent assignments, function names, and dependencies from the text.
+        Supports formats:
+        - New with deps: "Step 1: Action. Agent: agent_name. Function: function_name. Dependencies: [1,2]"
+        - New: "Step 1: Action. Agent: agent_name. Function: function_name"
+        - Old: "Step 1: Action (Agent: agent_name)"
         """
         import re
         
@@ -1043,27 +1758,117 @@ Your responsibilities:
         
         logger.info("Plan content after extraction", content=plan_content[:500])
         
-        # Parse steps using regex - match entire lines
-        # Match patterns like: "Step 1: Action (Agent: agent_name)"
-        step_pattern = r'Step\s+\d+:\s*(.+?)\s*\(Agent:\s*(\w+)\)'
-        matches = re.findall(step_pattern, plan_content, re.IGNORECASE)
+        # Parse steps line by line to extract dependencies properly
+        # Format: "Step N: Action. Agent: agent. Function: func. Dependencies: [1,2,3]"
+        step_lines = [line.strip() for line in plan_content.split('\n') if line.strip().startswith('Step')]
         
-        logger.info(f"Regex matches found: {len(matches)}")
+        logger.info(
+            f"Found {len(step_lines)} step lines in plan",
+            step_lines_preview=[line[:100] for line in step_lines[:3]]
+        )
         
         steps = []
-        for idx, (action, agent) in enumerate(matches):
-            logger.info(f"Parsed step {idx + 1}", action=action.strip()[:80], agent=agent)
-            step = PlanStep(
-                id=str(uuid.uuid4()),
-                description=f"{action.strip()} (Agent: {agent})",
-                agent=agent.lower(),
-                tools=[],
-                dependencies=[],
-                status="pending"
-            )
-            steps.append(step)
+        step_id_map = {}  # Map step number to step ID
+        step_data = []  # Temporary storage for parsed step data
         
-        logger.info(f"Parsed {len(steps)} steps from ReAct planning result")
+        # FIRST PASS: Create step IDs for all steps
+        for line in step_lines:
+            step_num_match = re.search(r'Step\s+(\d+):', line, re.IGNORECASE)
+            if step_num_match:
+                step_num = int(step_num_match.group(1))
+                step_id = str(uuid.uuid4())
+                step_id_map[step_num] = step_id
+                logger.info(f"Pre-created step ID", step_num=step_num, step_id=step_id)
+        
+        # SECOND PASS: Parse step details with dependency resolution
+        for line in step_lines:
+            logger.info(f"Parsing line", line=line[:150])
+            
+            # Extract step number
+            step_num_match = re.search(r'Step\s+(\d+):', line, re.IGNORECASE)
+            if not step_num_match:
+                logger.warning(f"Could not extract step number from line", line=line[:100])
+                continue
+            
+            step_num = int(step_num_match.group(1))
+            step_id = step_id_map[step_num]  # Use pre-created ID
+            
+            # Extract components with regex
+            # Pattern with dependencies: "Agent: X. Function: Y. Dependencies: [...]"
+            # Function name should NOT include trailing period
+            full_pattern = r'Step\s+\d+:\s*(.+?)\.\s*Agent:\s*(\w+)\.\s*Function:\s*([^\.\s]+)(?:\.\s*Dependencies:\s*\[([^\]]+)\])?'
+            match = re.search(full_pattern, line, re.IGNORECASE)
+            
+            if match:
+                action = match.group(1).strip()
+                agent = match.group(2).strip().lower()
+                function = match.group(3).strip()
+                deps_str = match.group(4)  # Can be None if no dependencies
+                
+                logger.info(
+                    f"Regex matched successfully",
+                    step_num=step_num,
+                    action=action[:50],
+                    agent=agent,
+                    function=function,
+                    deps_str=deps_str
+                )
+                
+                # Parse dependencies
+                dependencies = []
+                if deps_str:
+                    # Extract numbers from dependency string (e.g., "1,2,3" or "1, 2, 3")
+                    dep_numbers = [int(d.strip()) for d in deps_str.split(',') if d.strip().isdigit()]
+                    # Map step numbers to step IDs (now they all exist!)
+                    dependencies = [step_id_map.get(num) for num in dep_numbers if num in step_id_map]
+                    logger.info(
+                        f"Resolved dependencies for step {step_num}",
+                        dep_numbers=dep_numbers,
+                        resolved_ids=dependencies
+                    )
+                
+                logger.info(
+                    f"Parsed step {step_num}",
+                    action=action[:80],
+                    agent=agent,
+                    function=function,
+                    num_dependencies=len(dependencies)
+                )
+                
+                # Include function in description
+                description = f"{action}. Function: {function}"
+                
+                step = PlanStep(
+                    id=step_id,
+                    description=description,
+                    agent=agent,
+                    tools=[function],
+                    dependencies=dependencies,
+                    status="pending"
+                )
+                steps.append(step)
+            else:
+                # Try old format without Function
+                old_pattern = r'Step\s+\d+:\s*(.+?)\s*\(Agent:\s*(\w+)\)'
+                old_match = re.search(old_pattern, line, re.IGNORECASE)
+                
+                if old_match:
+                    action = old_match.group(1).strip()
+                    agent = old_match.group(2).strip().lower()
+                    
+                    logger.info(f"Parsed step {step_num} (old format)", action=action[:80], agent=agent)
+                    
+                    step = PlanStep(
+                        id=step_id,
+                        description=action,
+                        agent=agent,
+                        tools=[],
+                        dependencies=[],
+                        status="pending"
+                    )
+                    steps.append(step)
+        
+        logger.info(f"Parsed {len(steps)} steps from planning result")
         
         # Create ExecutionPlan
         execution_plan = ExecutionPlan(

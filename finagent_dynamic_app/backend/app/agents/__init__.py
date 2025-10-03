@@ -10,6 +10,8 @@ from .earnings_agent import EarningsAgent
 from .fundamentals_agent import FundamentalsAgent
 from .technicals_agent import TechnicalsAgent
 from .report_agent import ReportAgent
+from .forecaster_agent import ForecasterAgent
+from .summarizer_agent import SummarizerAgent
 
 __all__ = [
     "CompanyAgent",
@@ -18,4 +20,6 @@ __all__ = [
     "FundamentalsAgent",
     "TechnicalsAgent",
     "ReportAgent",
+    "ForecasterAgent",
+    "SummarizerAgent",
 ]

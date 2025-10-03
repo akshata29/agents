@@ -354,9 +354,9 @@ class MagenticOrchestrator:
             "task": task,
             "agent": agent,
             "tools": tools or [],
-            "iterations": result.get("iterations", 0),
-            "final_result": result.get("result"),
-            "reasoning_trace": result.get("trace", [])
+            "iterations": result.iterations if hasattr(result, 'iterations') else 0,
+            "final_result": result.result if hasattr(result, 'result') else None,
+            "reasoning_trace": result.reasoning_trace if hasattr(result, 'reasoning_trace') else []
         }
 
     async def get_execution_status(self, execution_id: str) -> Optional[ExecutionContext]:
@@ -422,7 +422,9 @@ class MagenticOrchestrator:
         pattern_type_map = {
             "sequential": "sequential",
             "concurrent": "concurrent",
-            "react": "react"
+            "react": "react",
+            "groupchat": "group_chat",  # GroupChatPattern -> group_chat handler
+            "handoff": "handoff"  # HandoffPattern -> handoff handler
         }
         
         handler_name = pattern_type_map.get(pattern_type, pattern_type)
@@ -447,13 +449,116 @@ class MagenticOrchestrator:
 
     async def _handle_group_chat_pattern(self, context: ExecutionContext) -> Dict[str, Any]:
         """Handle group chat pattern execution."""
-        # TODO: Implement group chat pattern
-        raise NotImplementedError("Group chat pattern not yet implemented")
+        agents = context.agents or []
+        task = context.task
+        
+        if not agents:
+            raise ValueError("No agents specified for group chat pattern")
+        
+        logger.info(f"Executing group chat pattern with {len(agents)} agents")
+        
+        # Get agent instances
+        agent_instances = []
+        for agent_name in agents:
+            agent = await self.agent_registry.get_agent(agent_name)
+            if not agent:
+                raise ValueError(f"Agent not found: {agent_name}")
+            agent_instances.append(agent)
+        
+        # Set up MCP tools if provided
+        if context.tools:
+            await self._setup_mcp_tools(context.tools)
+        
+        # Create group chat workflow using Microsoft Agent Framework
+        # MagenticBuilder is used for group chat / multi-agent collaboration
+        builder = MagenticBuilder()
+        if agent_instances:
+            builder = builder.participants(agent_instances)
+        workflow = builder.build()
+        
+        # Execute workflow
+        messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=task)])]
+        
+        results = []
+        conversation_history = []
+        
+        try:
+            workflow_run = await workflow.run(messages)
+            for event in workflow_run:
+                if isinstance(event, WorkflowOutputEvent):
+                    last_message = event.data[-1] if event.data else None
+                    message_content = last_message.text if last_message else ""
+                    
+                    result_entry = {
+                        "agent": event.source_executor_id,
+                        "content": message_content,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    
+                    results.append(result_entry)
+                    conversation_history.append(f"{event.source_executor_id}: {message_content[:100]}")
+            
+            # Extract final consensus or summary from the last message
+            final_result = results[-1]["content"] if results else "No result generated"
+            
+            return {
+                "pattern": "group_chat",
+                "task": task,
+                "agents": agents,
+                "results": results,
+                "conversation_history": conversation_history,
+                "final_result": final_result,
+                "message_count": len(results),
+                "participating_agents": list(set(r["agent"] for r in results))
+            }
+            
+        except Exception as e:
+            logger.error(f"Group chat pattern execution failed: {str(e)}")
+            raise
 
     async def _handle_handoff_pattern(self, context: ExecutionContext) -> Dict[str, Any]:
         """Handle handoff pattern execution."""
-        # TODO: Implement handoff pattern
-        raise NotImplementedError("Handoff pattern not yet implemented")
+        # Get pattern from context metadata or reconstruct from context
+        # For now, implement basic handoff by starting with the initial agent
+        agents = context.agents or []
+        task = context.task
+        
+        if not agents:
+            raise ValueError("No agents specified for handoff pattern")
+        
+        # Use the first agent as the initial agent (should be set by pattern)
+        initial_agent_name = agents[0] if agents else None
+        if not initial_agent_name:
+            raise ValueError("No initial agent specified for handoff pattern")
+        
+        logger.info(f"Executing handoff pattern starting with agent: {initial_agent_name}")
+        
+        # Get the initial agent instance
+        agent = await self.agent_registry.get_agent(initial_agent_name)
+        if not agent:
+            raise ValueError(f"Agent not found: {initial_agent_name}")
+        
+        # Set up MCP tools if provided
+        if context.tools:
+            await self._setup_mcp_tools(context.tools)
+        
+        # Execute with the initial agent
+        # For now, use a simple execution without actual handoff mechanism
+        # TODO: Implement proper handoff mechanism with Microsoft Agent Framework
+        try:
+            result = await agent.process(task)
+            
+            return {
+                "pattern": "handoff",
+                "task": task,
+                "initial_agent": initial_agent_name,
+                "available_agents": agents,
+                "result": result,
+                "handoffs_performed": 0  # TODO: Track actual handoffs
+            }
+        except Exception as e:
+            logger.error(f"Handoff pattern execution failed: {str(e)}")
+            raise
 
     async def _setup_mcp_tools(self, tools: List[str]) -> None:
         """Set up MCP tools for the execution."""

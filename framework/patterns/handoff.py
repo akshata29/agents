@@ -6,7 +6,7 @@ dynamically delegate work to specialized agents based on the conversation contex
 """
 
 from typing import Any, Dict, List, Optional, Set, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 from ..core.orchestrator import OrchestrationPattern
@@ -34,8 +34,15 @@ class HandoffPattern(OrchestrationPattern):
     - Customer service escalation
     """
     
+    # Allow extra fields like handoff_relationships in __init__
+    model_config = ConfigDict(extra='allow', arbitrary_types_allowed=True)
+    
     # Handoff-specific configuration as Pydantic fields
     initial_agent: str = Field(description="Agent that receives initial input")
+    handoff_relationships: Optional[Dict[str, List[str]]] = Field(
+        default=None,
+        description="Dict mapping agent names to lists of agents they can handoff to"
+    )
     handoff_strategy: str = Field(
         default="explicit",
         description="Handoff strategy: 'explicit', 'automatic', or 'hybrid'"
@@ -90,24 +97,26 @@ class HandoffPattern(OrchestrationPattern):
         max_handoffs = _config.get("max_handoffs", 10)
         handoff_instructions = _config.get("handoff_instructions")
         
-        # Store handoff relationships
-        self.handoff_relationships = handoff_relationships or self._create_full_mesh(agents)
+        # Create handoff relationships if not provided
+        if handoff_relationships is None:
+            handoff_relationships = self._create_full_mesh_static(agents)
         
         super().__init__(
             name=name,
-            pattern_type="handoff",
             agents=agents,
             description=description or "Handoff pattern with dynamic agent delegation",
             tools=tools,
             config=config,
             initial_agent=initial_agent,
+            handoff_relationships=handoff_relationships,
             handoff_strategy=handoff_strategy,
             allow_return_handoffs=allow_return_handoffs,
             max_handoffs=max_handoffs,
             handoff_instructions=handoff_instructions
         )
     
-    def _create_full_mesh(self, agents: List[str]) -> Dict[str, List[str]]:
+    @staticmethod
+    def _create_full_mesh_static(agents: List[str]) -> Dict[str, List[str]]:
         """
         Create full mesh handoff network where every agent can handoff to every other agent.
         

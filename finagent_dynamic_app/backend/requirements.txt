@@ -1,0 +1,41 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.9.0
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+structlog==24.4.0
+openai==1.51.0
+azure-identity==1.19.0
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+azure-monitor-opentelemetry-exporter==1.0.0b31
+python-multipart==0.0.12
+websockets==13.1
+aiofiles==24.1.0
+
+# Microsoft Agent Framework (placeholder - install from source)
+# agent-framework
+
+# Data & Analytics
+yfinance==0.2.48
+pandas==2.2.3
+numpy==2.1.2
+ta==0.11.0
+requests==2.32.3
+tabulate==0.9.0  # For DataFrame.to_markdown()
+
+# PDF Generation
+reportlab==4.2.5
+pypdf==5.0.1
+
+# Azure Services
+azure-storage-blob==12.23.1
+azure-cosmos==4.7.0
+
+# Development
+pytest==8.3.3
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+black==24.10.0
+ruff==0.7.3

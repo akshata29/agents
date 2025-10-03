@@ -1,0 +1,15 @@
+# Yahoo Finance MCP Server Requirements
+# Compatible with the finagent_app backend
+
+# MCP Server Framework
+mcp>=1.0.0
+fastmcp>=0.2.0
+
+# Yahoo Finance Data
+yfinance>=0.2.50
+
+# Data Processing
+pandas>=2.0.0
+
+# Validation
+pydantic>=2.0.0

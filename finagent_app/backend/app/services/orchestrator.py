@@ -155,14 +155,25 @@ class FinancialOrchestrationService:
         scope: List[str],
         depth: str = "standard",
         include_pdf: bool = True,
-        year: Optional[str] = None
+        year: Optional[str] = None,
+        run_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None
     ) -> OrchestrationResponse:
         """
         Execute sequential research workflow using framework's SequentialPattern.
         
         Leverages MAF Sequential Pattern for ordered agent execution with context preservation.
+        
+        Args:
+            ticker: Stock ticker symbol
+            scope: List of analysis modules to run
+            depth: Analysis depth (standard/deep/comprehensive)
+            include_pdf: Whether to generate PDF report
+            year: Optional year for historical analysis
+            run_id: Optional pre-generated run ID
+            progress_callback: Optional async function to call after each step
         """
-        run_id = str(uuid.uuid4())
+        run_id = run_id or str(uuid.uuid4())
         started_at = datetime.utcnow()
         
         logger.info("Starting sequential execution with SequentialPattern",
@@ -274,6 +285,10 @@ class FinancialOrchestrationService:
                     step.status = ExecutionStatus.COMPLETED
                     step.completed_at = datetime.utcnow()
                     step.output = result_text[:500]  # Store first 500 chars
+                    
+                    # Broadcast progress update
+                    if progress_callback:
+                        await progress_callback(run_id, "step_completed", response.model_dump())
                     
                     # Add to context for next agent (context preservation)
                     context[f"{agent_name}_analysis"] = result_text
@@ -494,14 +509,16 @@ class FinancialOrchestrationService:
         modules: List[str],
         aggregation_strategy: str = "merge",
         include_pdf: bool = True,
-        year: Optional[str] = None
+        year: Optional[str] = None,
+        run_id: Optional[str] = None,
+        progress_callback: Optional[callable] = None
     ) -> OrchestrationResponse:
         """
         Execute concurrent research workflow using framework's ConcurrentPattern.
         
         Leverages MAF Concurrent Pattern for parallel agent execution with result aggregation.
         """
-        run_id = str(uuid.uuid4())
+        run_id = run_id or str(uuid.uuid4())
         started_at = datetime.utcnow()
         
         logger.info("Starting concurrent execution with ConcurrentPattern",

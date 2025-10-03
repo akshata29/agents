@@ -17,6 +17,7 @@ export default function ResearchForm({ onResearchStart }: ResearchFormProps) {
   const sequentialMutation = useMutation({
     mutationFn: (request: SequentialResearchRequest) => api.runSequential(request),
     onSuccess: (data) => {
+      // Immediately switch to monitor tab when research starts
       onResearchStart(data.run_id);
     },
   });
@@ -24,6 +25,7 @@ export default function ResearchForm({ onResearchStart }: ResearchFormProps) {
   const concurrentMutation = useMutation({
     mutationFn: (request: ConcurrentResearchRequest) => api.runConcurrent(request),
     onSuccess: (data) => {
+      // Immediately switch to monitor tab when research starts
       onResearchStart(data.run_id);
     },
   });

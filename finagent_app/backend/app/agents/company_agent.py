@@ -2,13 +2,14 @@
 Company Agent
 
 Microsoft Agent Framework compliant agent for company intelligence and market data analysis.
-Integrates real data providers (FMP, Yahoo Finance) following MAF patterns.
+Integrates real data providers (FMP, Yahoo Finance MCP Server) following MAF patterns.
 """
 
 import asyncio
 from typing import Any, Dict, List, Optional, AsyncIterable
 from datetime import date, timedelta
 import structlog
+import json
 
 # Microsoft Agent Framework imports
 from agent_framework import BaseAgent, ChatMessage, Role, TextContent, AgentRunResponse, AgentRunResponseUpdate, AgentThread
@@ -21,7 +22,10 @@ if str(bridge_dir) not in sys.path:
     sys.path.insert(0, str(bridge_dir))
 
 from helpers.fmputils import FMPUtils
-from helpers.yfutils import YFUtils
+
+# Import MCP client for calling Yahoo Finance MCP server
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 
 logger = structlog.get_logger(__name__)
 
@@ -58,9 +62,10 @@ Be data-driven, factual, and provide actionable insights. Always cite your data 
         description: str = "Company intelligence and market data specialist",
         azure_client: Any = None,
         model: str = "gpt-4o",
-        fmp_api_key: Optional[str] = None
+        fmp_api_key: Optional[str] = None,
+        mcp_server_url: Optional[str] = None
     ):
-        """Initialize Company Agent following MAF pattern."""
+        """Initialize Company Agent with Yahoo Finance MCP integration."""
         super().__init__(name=name, description=description)
         
         # Store custom attributes
@@ -70,7 +75,15 @@ Be data-driven, factual, and provide actionable insights. Always cite your data 
         
         # Initialize data providers
         self.fmp_utils = FMPUtils(fmp_api_key) if fmp_api_key else None
-        self.yf_utils = YFUtils()
+        
+        # MCP server configuration - use HTTP/SSE endpoint
+        self.mcp_server_url = mcp_server_url or "http://localhost:8001/sse"
+        self.mcp_session: Optional[ClientSession] = None
+        
+        logger.info(
+            "CompanyAgent initialized with Yahoo Finance MCP integration",
+            mcp_server_url=self.mcp_server_url
+        )
     
     @property
     def capabilities(self) -> List[str]:
@@ -185,7 +198,7 @@ Be data-driven, factual, and provide actionable insights. Always cite your data 
             )
     
     async def _fetch_market_data(self, ticker: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Fetch real market data from FMP and Yahoo Finance."""
+        """Fetch real market data from FMP and Yahoo Finance MCP Server."""
         data = {}
         
         try:
@@ -199,53 +212,88 @@ Be data-driven, factual, and provide actionable insights. Always cite your data 
                 metrics_df = self.fmp_utils.get_financial_metrics(ticker, years=4)
                 if not metrics_df.empty:
                     data["financial_metrics"] = metrics_df.to_markdown()
-                
-                # Get company news
-                end_date = date.today().strftime("%Y-%m-%d")
-                start_date = (date.today() - timedelta(days=7)).strftime("%Y-%m-%d")
-                news_df = self.fmp_utils.get_company_news(ticker, start_date, end_date, max_news=5)
-                if not news_df.empty:
-                    data["company_news"] = news_df.to_markdown()
             
-            # Get data from Yahoo Finance
-            logger.info(f"Fetching stock info from Yahoo Finance for {ticker}")
-            stock_info = self.yf_utils.get_stock_info(ticker)
-            if stock_info:
-                data["stock_info"] = {
-                    "current_price": stock_info.get("currentPrice", "N/A"),
-                    "market_cap": stock_info.get("marketCap", "N/A"),
-                    "52_week_high": stock_info.get("fiftyTwoWeekHigh", "N/A"),
-                    "52_week_low": stock_info.get("fiftyTwoWeekLow", "N/A"),
-                    "pe_ratio": stock_info.get("trailingPE", "N/A"),
-                    "forward_pe": stock_info.get("forwardPE", "N/A"),
-                    "dividend_yield": stock_info.get("dividendYield", "N/A"),
-                }
+            # Get data from Yahoo Finance MCP Server
+            logger.info(f"Fetching stock data from Yahoo Finance MCP Server for {ticker}")
             
-            # Get analyst recommendations
-            analyst_recs = self.yf_utils.get_analyst_recommendations(ticker)
-            if analyst_recs:
-                data["analyst_recommendations"] = analyst_recs
-            
-            # Get stock price data (last year)
-            end_date_dt = date.today().strftime("%Y-%m-%d")
-            start_date_dt = (date.today() - timedelta(days=365)).strftime("%Y-%m-%d")
-            stock_data = self.yf_utils.get_stock_data(ticker, start_date_dt, end_date_dt)
-            if not stock_data.empty:
-                # Calculate performance metrics
-                initial_price = stock_data['Close'].iloc[0]
-                current_price = stock_data['Close'].iloc[-1]
-                year_performance = ((current_price - initial_price) / initial_price) * 100
-                data["stock_performance"] = {
-                    "1_year_return": f"{year_performance:.2f}%",
-                    "52_week_high": stock_data['High'].max(),
-                    "52_week_low": stock_data['Low'].min(),
-                }
+            # Connect to MCP server via SSE (HTTP)
+            async with sse_client(self.mcp_server_url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    # Get stock info via MCP
+                    logger.info(f"Calling MCP tool: get_stock_info for {ticker}")
+                    stock_info_result = await session.call_tool(
+                        "get_stock_info",
+                        arguments={"ticker": ticker}
+                    )
+                    stock_info_data = json.loads(stock_info_result.content[0].text)
+                    data["stock_info"] = {
+                        "current_price": stock_info_data.get("currentPrice", "N/A"),
+                        "market_cap": stock_info_data.get("marketCap", "N/A"),
+                        "52_week_high": stock_info_data.get("fiftyTwoWeekHigh", "N/A"),
+                        "52_week_low": stock_info_data.get("fiftyTwoWeekLow", "N/A"),
+                        "pe_ratio": stock_info_data.get("trailingPE", "N/A"),
+                        "forward_pe": stock_info_data.get("forwardPE", "N/A"),
+                        "dividend_yield": stock_info_data.get("dividendYield", "N/A"),
+                    }
+                    
+                    # Get historical stock prices (1 year) via MCP
+                    logger.info(f"Calling MCP tool: get_historical_stock_prices for {ticker}")
+                    hist_result = await session.call_tool(
+                        "get_historical_stock_prices",
+                        arguments={
+                            "ticker": ticker,
+                            "period": "1y",
+                            "interval": "1d"
+                        }
+                    )
+                    hist_data = json.loads(hist_result.content[0].text)
+                    
+                    # Calculate performance from historical data
+                    if hist_data and len(hist_data) > 0:
+                        first_close = hist_data[0].get("Close", 0)
+                        last_close = hist_data[-1].get("Close", 0)
+                        if first_close > 0:
+                            year_performance = ((last_close - first_close) / first_close) * 100
+                            
+                            # Get 52-week high/low
+                            high_prices = [d.get("High", 0) for d in hist_data]
+                            low_prices = [d.get("Low", 0) for d in hist_data]
+                            
+                            data["stock_performance"] = {
+                                "1_year_return": f"{year_performance:.2f}%",
+                                "52_week_high": max(high_prices) if high_prices else "N/A",
+                                "52_week_low": min(low_prices) if low_prices else "N/A",
+                            }
+                    
+                    # Get analyst recommendations via MCP
+                    logger.info(f"Calling MCP tool: get_recommendations for {ticker}")
+                    recs_result = await session.call_tool(
+                        "get_recommendations",
+                        arguments={
+                            "ticker": ticker,
+                            "recommendation_type": "recommendations"
+                        }
+                    )
+                    recs_text = recs_result.content[0].text
+                    data["analyst_recommendations"] = recs_text
+                    
+                    # Get Yahoo Finance news via MCP (primary source for news)
+                    logger.info(f"Calling MCP tool: get_yahoo_finance_news for {ticker}")
+                    news_result = await session.call_tool(
+                        "get_yahoo_finance_news",
+                        arguments={"ticker": ticker}
+                    )
+                    yf_news = news_result.content[0].text
+                    if yf_news:
+                        data["company_news"] = yf_news
             
             logger.info(f"Market data fetched successfully for {ticker}", data_keys=list(data.keys()))
             return data
             
         except Exception as e:
-            logger.error(f"Error fetching market data for {ticker}", error=str(e))
+            logger.error(f"Error fetching market data for {ticker}", error=str(e), exc_info=True)
             return data
     
     def _build_analysis_prompt_with_data(

@@ -17,7 +17,8 @@ from openai import AsyncAzureOpenAI
 
 from .models.dto import (
     SequentialResearchRequest, ConcurrentResearchRequest,
-    OrchestrationResponse, SystemStatusResponse, AgentHealthResponse
+    OrchestrationResponse, SystemStatusResponse, AgentHealthResponse,
+    OrchestrationPattern
 )
 from .services.orchestrator import FinancialOrchestrationService
 from .infra.settings import get_settings
@@ -130,6 +131,7 @@ async def run_sequential(request: SequentialResearchRequest):
     Execute sequential research workflow.
     
     Agents run in order: Company → SEC → Earnings → Fundamentals → Technicals → Report
+    This endpoint returns immediately with a run_id and processes in the background.
     """
     if not orchestration_service:
         raise HTTPException(status_code=503, detail="Orchestration service not available")
@@ -144,35 +146,85 @@ async def run_sequential(request: SequentialResearchRequest):
             year=request.year
         )
         
-        import time
-        start_time = time.time()
+        # Generate run_id immediately
+        import uuid
+        run_id = f"seq-{request.ticker}-{uuid.uuid4().hex[:8]}"
         
-        result = await orchestration_service.execute_sequential(
+        # Create initial response with "running" status
+        initial_response = OrchestrationResponse(
+            run_id=run_id,
+            status="running",
+            pattern=OrchestrationPattern.SEQUENTIAL,
+            started_at=datetime.utcnow(),
+            steps=[],
+            final_report="",
+            execution_time=0.0,
+            ticker=request.ticker,
+            timestamp=datetime.utcnow()
+        )
+        
+        # Start background task for actual execution
+        asyncio.create_task(execute_sequential_background(
+            run_id=run_id,
             ticker=request.ticker,
             scope=[m.value for m in request.scope],
             depth=request.depth.value,
             include_pdf=request.include_pdf,
             year=request.year
+        ))
+        
+        # Broadcast initial status
+        await broadcast_execution_update(run_id, "started", initial_response.model_dump())
+        
+        return initial_response
+        
+    except Exception as e:
+        logger.error("Sequential execution failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def execute_sequential_background(
+    run_id: str,
+    ticker: str,
+    scope: List[str],
+    depth: str,
+    include_pdf: bool,
+    year: Optional[int]
+):
+    """Execute sequential research in background and broadcast updates."""
+    import time
+    start_time = time.time()
+    
+    try:
+        result = await orchestration_service.execute_sequential(
+            ticker=ticker,
+            scope=scope,
+            depth=depth,
+            include_pdf=include_pdf,
+            year=year,
+            run_id=run_id,  # Pass the run_id
+            progress_callback=broadcast_execution_update  # Pass broadcast callback for real-time updates
         )
         
         duration = time.time() - start_time
+        result.execution_time = duration
+        
         logger.info(
             f"=== Sequential research completed ===",
-            ticker=request.ticker,
-            run_id=result.run_id,
+            ticker=ticker,
+            run_id=run_id,
             status=result.status,
             duration_seconds=round(duration, 2),
             steps_count=len(result.steps)
         )
         
-        # Broadcast to WebSocket clients
-        await broadcast_execution_update(result.run_id, "started", result.model_dump())
-        
-        return result
+        # Broadcast final completion
+        await broadcast_execution_update(run_id, "completed", result.model_dump())
         
     except Exception as e:
-        logger.error("Sequential execution failed", error=str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Background sequential execution failed", error=str(e), run_id=run_id)
+        # Broadcast error
+        await broadcast_execution_update(run_id, "error", {"error": str(e)})
 
 
 @app.post("/orchestration/concurrent", response_model=OrchestrationResponse)
@@ -181,6 +233,7 @@ async def run_concurrent(request: ConcurrentResearchRequest):
     Execute concurrent research workflow.
     
     Agents run in parallel with result aggregation.
+    This endpoint returns immediately with a run_id and processes in the background.
     """
     if not orchestration_service:
         raise HTTPException(status_code=503, detail="Orchestration service not available")
@@ -189,15 +242,80 @@ async def run_concurrent(request: ConcurrentResearchRequest):
         logger.info("Concurrent research requested",
                     ticker=request.ticker, modules=request.modules)
         
-        result = await orchestration_service.execute_concurrent(
+        # Generate run_id immediately
+        import uuid
+        run_id = f"con-{request.ticker}-{uuid.uuid4().hex[:8]}"
+        
+        # Create initial response
+        initial_response = OrchestrationResponse(
+            run_id=run_id,
+            status="running",
+            pattern=OrchestrationPattern.CONCURRENT,
+            started_at=datetime.utcnow(),
+            steps=[],
+            final_report="",
+            execution_time=0.0,
+            ticker=request.ticker,
+            timestamp=datetime.utcnow()
+        )
+        
+        # Start background task
+        asyncio.create_task(execute_concurrent_background(
+            run_id=run_id,
             ticker=request.ticker,
             modules=[m.value for m in request.modules],
             aggregation_strategy=request.aggregation_strategy,
             include_pdf=request.include_pdf,
             year=request.year
+        ))
+        
+        await broadcast_execution_update(run_id, "started", initial_response.model_dump())
+        
+        return initial_response
+        
+    except Exception as e:
+        logger.error("Concurrent execution failed", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def execute_concurrent_background(
+    run_id: str,
+    ticker: str,
+    modules: List[str],
+    aggregation_strategy: str,
+    include_pdf: bool,
+    year: Optional[int]
+):
+    """Execute concurrent research in background and broadcast updates."""
+    import time
+    start_time = time.time()
+    
+    try:
+        result = await orchestration_service.execute_concurrent(
+            ticker=ticker,
+            modules=modules,
+            aggregation_strategy=aggregation_strategy,
+            include_pdf=include_pdf,
+            year=year,
+            run_id=run_id,
+            progress_callback=broadcast_execution_update  # Real-time updates
         )
         
-        await broadcast_execution_update(result.run_id, "started", result.model_dump())
+        duration = time.time() - start_time
+        result.execution_time = duration
+        
+        logger.info(
+            "=== Concurrent research completed ===",
+            ticker=ticker,
+            run_id=run_id,
+            duration_seconds=round(duration, 2)
+        )
+        
+        await broadcast_execution_update(run_id, "completed", result.model_dump())
+        
+    except Exception as e:
+        logger.error("Background concurrent execution failed", error=str(e), run_id=run_id)
+        await broadcast_execution_update(run_id, "error", {"error": str(e)})
         
         return result
         

@@ -14,6 +14,7 @@ from ..models.task_models import (
     PlanWithSteps, TaskListItem, ActionResponse, StepStatus
 )
 from ..services.task_orchestrator import TaskOrchestrator
+from ..services.task_injector import TaskInjector
 from ..persistence.cosmos_memory import CosmosMemoryStore
 from ..auth.auth_utils import get_authenticated_user_details
 from ..infra.settings import Settings
@@ -600,6 +601,156 @@ async def get_conversation_history(
         )
 
 
+@router.post("/inject_task", response_model=Dict[str, Any])
+async def inject_task(
+    request: Dict[str, Any],
+    req: Request,
+    orchestrator: TaskOrchestrator = Depends(get_task_orchestrator)
+):
+    """
+    Inject a new task into an in-progress plan.
+    Uses LLM to analyze request, validate capabilities, check duplicates,
+    and intelligently position the new task.
+    """
+    try:
+        # Extract request fields
+        session_id = request.get("session_id")
+        plan_id = request.get("plan_id")
+        task_request = request.get("task_request")
+        objective = request.get("objective")
+        current_steps = request.get("current_steps", [])
+        
+        logger.info(
+            "API: Task injection request received",
+            session_id=session_id,
+            plan_id=plan_id,
+            task_request=task_request
+        )
+        
+        # Validate required fields
+        if not all([session_id, plan_id, task_request, objective]):
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: session_id, plan_id, task_request, objective"
+            )
+        
+        # Get authenticated user
+        logger.info("API: Getting user authentication")
+        user_details = get_authenticated_user_details(req.headers)
+        user_id = user_details.get("user_principal_id")
+        
+        if not user_id:
+            logger.error("API: No user_principal_id found in headers")
+            raise HTTPException(status_code=400, detail="User authentication required")
+        
+        logger.info("API: User authenticated", user_id=user_id)
+        
+        # Initialize TaskInjector
+        logger.info("API: Initializing TaskInjector")
+        injector = TaskInjector()
+        logger.info("API: TaskInjector initialized successfully")
+        
+        # Analyze the injection request using LLM
+        logger.info("API: Starting LLM analysis of task request")
+        analysis = await injector.analyze_injection_request(
+            task_request=task_request,
+            objective=objective,
+            current_steps=current_steps
+        )
+        logger.info("API: LLM analysis returned", analysis_type=type(analysis).__name__)
+        
+        logger.info(
+            "API: Task injection analysis complete",
+            action=analysis.get("action"),
+            success=analysis.get("success")
+        )
+        
+        # If the task should be added, create and persist it
+        if analysis.get("success") and analysis.get("action") == "added":
+            # Get the current plan from Cosmos
+            logger.info("API: Fetching plan from Cosmos", plan_id=plan_id)
+            plan = await orchestrator.cosmos.get_plan(plan_id, session_id)
+            
+            if not plan:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Plan not found: {plan_id}"
+                )
+            
+            logger.info("API: Plan fetched successfully", plan_status=plan.overall_status)
+            
+            # Verify plan is in progress
+            if plan.overall_status != "in_progress":
+                return {
+                    "success": False,
+                    "action": "error",
+                    "message": f"Cannot inject task into plan with status: {plan.overall_status}"
+                }
+            
+            # Get the current steps for this plan
+            logger.info("API: Fetching steps from Cosmos")
+            steps_data = await orchestrator.cosmos.get_steps_by_plan(plan_id, session_id)
+            logger.info("API: Steps fetched", step_count=len(steps_data))
+            
+            # Create the new step
+            logger.info("API: Creating new step from analysis")
+            new_step, insert_position = injector.create_new_step(
+                analysis=analysis,
+                current_steps=steps_data,
+                session_id=session_id,
+                plan_id=plan_id,
+                user_id=user_id
+            )
+            logger.info("API: New step created", step_id=new_step.id, insert_position=insert_position)
+            
+            # Handle step reordering if inserting in middle
+            if insert_position < len(steps_data):
+                logger.info(
+                    "API: Reordering steps for middle insertion",
+                    insert_position=insert_position,
+                    total_steps=len(steps_data)
+                )
+                
+                # Update orders of all subsequent steps
+                for step in steps_data:
+                    if step.order >= insert_position:
+                        step.order += 1
+                        await orchestrator.cosmos.update_step(step)
+                        logger.info("API: Updated step order", step_id=step.id, new_order=step.order)
+            
+            # Persist the new step to Cosmos
+            logger.info("API: Persisting new step to Cosmos", step_id=new_step.id)
+            await orchestrator.cosmos.add_step(new_step)
+            logger.info("API: New step persisted successfully")
+            
+            logger.info(
+                "API: New step created and persisted",
+                step_id=new_step.id,
+                order=new_step.order,
+                action=new_step.action
+            )
+            
+            # Add step ID to response
+            analysis["new_step_id"] = new_step.id
+            analysis["inserted_at"] = insert_position
+        
+        return analysis
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "API: Failed to inject task",
+            error=str(e),
+            session_id=request.get("session_id"),
+            plan_id=request.get("plan_id")
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to inject task: {str(e)}"
+        )
+
+
 # Startup event to initialize orchestrator
 @router.on_event("startup")
 async def startup_event():
@@ -608,6 +759,49 @@ async def startup_event():
     # Trigger initialization
     await get_task_orchestrator()
     logger.info("API Router: Startup complete")
+
+
+@router.post("/recalculate_plan_status/{session_id}/{plan_id}")
+async def recalculate_plan_status(
+    session_id: str,
+    plan_id: str,
+    orchestrator: TaskOrchestrator = Depends(get_task_orchestrator)
+):
+    """
+    Manually recalculate and update plan status based on current step statuses.
+    Useful for fixing plans that weren't updated with the latest logic.
+    """
+    try:
+        logger.info("API: Manually recalculating plan status", 
+                   session_id=session_id, 
+                   plan_id=plan_id)
+        
+        # Call the internal method to update plan status
+        await orchestrator._update_plan_status_if_complete(plan_id, session_id)
+        
+        # Return the updated plan
+        plan = await orchestrator.cosmos.get_plan(plan_id, session_id)
+        
+        logger.info("API: Plan status recalculated", 
+                   plan_id=plan_id,
+                   status=plan.overall_status if plan else None)
+        
+        return {
+            "success": True,
+            "plan_id": plan_id,
+            "session_id": session_id,
+            "overall_status": plan.overall_status if plan else None,
+            "message": "Plan status recalculated successfully"
+        }
+    except Exception as e:
+        logger.error("Failed to recalculate plan status", 
+                    error=str(e),
+                    plan_id=plan_id,
+                    session_id=session_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to recalculate plan status: {str(e)}"
+        )
 
 
 # Shutdown event to cleanup

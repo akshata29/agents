@@ -31,6 +31,7 @@ export interface Step {
   dependencies?: string[];  // List of step IDs this step depends on
   required_artifacts?: string[];  // Types of artifacts needed
   tools?: string[];  // Specific tools/functions to call
+  manually_injected?: boolean;  // True if added via task injection feature
 }
 
 export interface Plan {
@@ -97,6 +98,29 @@ export interface UserHistoryItem {
   created_at: string;
   steps_count: number;
   user_id: string;
+}
+
+export interface TaskInjectionRequest {
+  session_id: string;
+  plan_id: string;
+  task_request: string;
+  objective: string;
+  current_steps: Array<{
+    id: string;
+    order: number;
+    action: string;
+    agent: string;
+    status: string;
+  }>;
+}
+
+export interface TaskInjectionResponse {
+  success: boolean;
+  message: string;
+  action: 'added' | 'duplicate' | 'unsupported' | 'clarification_needed';
+  inserted_at?: number;
+  new_step_id?: string;
+  suggestions?: string[];
 }
 
 // ============= API Client =============
@@ -190,6 +214,14 @@ class APIClient {
 
   async healthCheck(): Promise<{ status: string; service: string }> {
     const response = await axios.get(`${this.baseURL}/health`);
+    return response.data;
+  }
+
+  async injectTask(request: TaskInjectionRequest): Promise<TaskInjectionResponse> {
+    const response = await axios.post<TaskInjectionResponse>(
+      `${this.baseURL}/api/inject_task`,
+      request
+    );
     return response.data;
   }
 }

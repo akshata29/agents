@@ -545,6 +545,10 @@ class TaskOrchestrator:
         """
         Check if all dependencies for a step are met.
         
+        Dependencies are considered met if they are either:
+        - COMPLETED: Successfully executed
+        - REJECTED: User chose to skip, but dependent step can still proceed if approved
+        
         Args:
             step: Step to check dependencies for
             
@@ -555,11 +559,22 @@ class TaskOrchestrator:
             return True, "No dependencies"
         
         unmet_dependencies = []
+        rejected_dependencies = []
+        
         for dep_id in step.dependencies:
             try:
                 dep_step = await self.cosmos.get_step(dep_id, step.session_id)
-                if dep_step.status != StepStatus.COMPLETED:
+                
+                # Allow execution if dependency is completed OR rejected (user decision)
+                if dep_step.status == StepStatus.COMPLETED:
+                    continue  # Dependency met successfully
+                elif dep_step.status == StepStatus.REJECTED:
+                    rejected_dependencies.append(f"{dep_step.action[:50]}")
+                    continue  # Dependency rejected, but allow user to proceed if they approve
+                else:
+                    # Dependency is still pending/planned/running
                     unmet_dependencies.append(f"{dep_step.action[:50]} (Status: {dep_step.status})")
+                    
             except Exception as e:
                 logger.warning(f"Could not find dependency step {dep_id}", error=str(e))
                 unmet_dependencies.append(f"Unknown step {dep_id}")
@@ -567,6 +582,15 @@ class TaskOrchestrator:
         if unmet_dependencies:
             reason = f"Waiting for dependencies: {', '.join(unmet_dependencies)}"
             return False, reason
+        
+        # Log if proceeding with rejected dependencies
+        if rejected_dependencies:
+            logger.warning(
+                "Step proceeding with rejected dependencies",
+                step_id=step.id,
+                rejected_deps=rejected_dependencies
+            )
+            return True, f"Proceeding despite {len(rejected_dependencies)} rejected dependency(ies)"
         
         return True, "All dependencies met"
 
@@ -983,6 +1007,8 @@ class TaskOrchestrator:
             session_id: The session ID
         """
         try:
+            logger.info("Checking plan status for completion", plan_id=plan_id, session_id=session_id)
+            
             # Get the plan
             plan = await self.cosmos.get_plan(plan_id, session_id)
             if not plan:
@@ -1001,25 +1027,37 @@ class TaskOrchestrator:
             failed_steps = sum(1 for s in steps if s.status == StepStatus.FAILED)
             rejected_steps = sum(1 for s in steps if s.status == StepStatus.REJECTED)
             
+            logger.info("Step status breakdown", 
+                       plan_id=plan_id,
+                       total=total_steps,
+                       completed=completed_steps,
+                       failed=failed_steps,
+                       rejected=rejected_steps)
+            
+            # Calculate finished steps (terminal states: completed, failed, or rejected)
+            finished_steps = completed_steps + failed_steps + rejected_steps
+            
             # Update plan metadata
             plan.total_steps = total_steps
             plan.completed_steps = completed_steps
             plan.failed_steps = failed_steps
             
             # Determine overall plan status
-            if completed_steps == total_steps:
-                # All steps completed successfully
-                plan.overall_status = PlanStatus.COMPLETED
-                logger.info("Plan completed - all steps finished", plan_id=plan_id, total_steps=total_steps)
-            elif failed_steps > 0 or rejected_steps > 0:
-                # At least one step failed or was rejected
-                if completed_steps + failed_steps + rejected_steps == total_steps:
-                    # All steps are done (some failed/rejected)
+            if finished_steps == total_steps:
+                # All steps have reached a terminal state
+                if failed_steps > 0 and completed_steps == 0:
+                    # All steps failed (none completed) - mark as FAILED
                     plan.overall_status = PlanStatus.FAILED
-                    logger.info("Plan failed - some steps failed or rejected", 
+                    logger.info("Plan failed - all steps failed", plan_id=plan_id, failed=failed_steps)
+                else:
+                    # At least some steps completed, or mix of completed/rejected - mark as COMPLETED
+                    plan.overall_status = PlanStatus.COMPLETED
+                    logger.info("Plan completed", 
                               plan_id=plan_id, 
-                              failed=failed_steps, 
-                              rejected=rejected_steps)
+                              completed=completed_steps,
+                              rejected=rejected_steps,
+                              failed=failed_steps,
+                              total=total_steps)
             # else: keep IN_PROGRESS if there are still pending steps
             
             # Update the plan in Cosmos

@@ -154,6 +154,9 @@ class Step(BaseDataModel):
     # Ordering
     order: Optional[int] = None
     
+    # Injection tracking
+    manually_injected: bool = Field(default=False)  # True if added via task injection feature
+    
     # Dependencies and artifact requirements
     dependencies: List[str] = Field(default_factory=list)  # List of step IDs that must complete first
     required_artifacts: List[str] = Field(default_factory=list)  # Types of artifacts needed (e.g., "news", "recommendations")

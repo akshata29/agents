@@ -5,10 +5,11 @@
  * Clean layout with left steps panel and right output panel
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { marked } from 'marked';
 import { Play, CheckCircle, XCircle, Clock, TrendingUp, Users, Zap, Activity } from 'lucide-react';
 import { Plan, Step, AgentMessage, apiClient } from '../lib/api';
+import { TaskInjection } from './TaskInjection';
 
 // Configure marked for better output
 marked.setOptions({
@@ -20,6 +21,7 @@ interface PlanViewProps {
   plan: Plan;
   onApprove: (stepId: string) => void;
   onReject: (stepId: string, reason?: string) => void;
+  onRefreshPlan?: () => Promise<void>; // Add refresh callback
   isExecuting?: boolean;
 }
 
@@ -27,12 +29,35 @@ export const PlanView: React.FC<PlanViewProps> = ({
   plan,
   onApprove,
   onReject,
+  onRefreshPlan,
   isExecuting = false
 }) => {
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   const [processingSteps, setProcessingSteps] = useState<Set<string>>(new Set());
   const [stepMessages, setStepMessages] = useState<AgentMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  
+  // Use ref to always have the latest plan without causing re-renders
+  const planRef = useRef(plan);
+  useEffect(() => {
+    planRef.current = plan;
+  }, [plan]);
+
+  // Clear selected step when plan changes
+  useEffect(() => {
+    // If there's a selected step, verify it exists in the current plan
+    if (selectedStep && plan.steps) {
+      const stepExists = plan.steps.some(s => s.id === selectedStep);
+      if (!stepExists) {
+        console.log('Selected step not found in current plan, clearing selection', {
+          selectedStep,
+          planId: plan.id,
+          availableSteps: plan.steps.map(s => s.id)
+        });
+        setSelectedStep(null);
+      }
+    }
+  }, [plan.id, plan.steps, selectedStep]);
 
   // Fetch messages when selected step changes
   useEffect(() => {
@@ -54,29 +79,55 @@ export const PlanView: React.FC<PlanViewProps> = ({
       }
     };
 
+    // Helper function to check if step is in terminal state
+    const isStepTerminal = (stepId: string): boolean => {
+      const currentPlan = planRef.current;
+      const stepData = currentPlan.steps?.find(s => s.id === stepId);
+      const status = stepData?.status;
+      const isTerminal = status === 'completed' || 
+                        status === 'failed' || 
+                        status === 'rejected';
+      
+      // Debug logging
+      console.log('Checking step terminal status:', {
+        stepId,
+        status,
+        isTerminal,
+        hasStepData: !!stepData,
+        totalStepsInPlan: currentPlan.steps?.length || 0,
+        stepIds: currentPlan.steps?.map(s => s.id) || []
+      });
+      
+      return isTerminal;
+    };
+
+    // Initial fetch
     fetchMessages();
     
-    // Poll for updates if step is not in a terminal state
-    const selectedStepData = plan.steps?.find(s => s.id === selectedStep);
-    const isTerminalState = selectedStepData?.status === 'completed' || 
-                           selectedStepData?.status === 'failed' || 
-                           selectedStepData?.status === 'rejected';
-    
-    console.log('Selected step status:', selectedStepData?.status, 'Will poll:', !isTerminalState);
-    
-    // Poll for any non-terminal state (planned, approved, executing, etc.)
-    if (!isTerminalState) {
-      console.log('Starting polling for step:', selectedStep);
-      const interval = setInterval(() => {
-        console.log('Polling for messages...');
-        fetchMessages();
-      }, 2000);
-      return () => {
-        console.log('Stopping polling for step:', selectedStep);
-        clearInterval(interval);
-      };
+    // Check if step is already terminal - if so, don't start polling
+    if (isStepTerminal(selectedStep)) {
+      console.log('Step already in terminal state, skipping polling');
+      return;
     }
-  }, [selectedStep, plan.session_id, plan.id, plan.steps]);
+    
+    // Set up polling only for non-terminal steps
+    console.log('Starting polling for non-terminal step:', selectedStep);
+    const pollInterval = setInterval(async () => {
+      if (isStepTerminal(selectedStep)) {
+        console.log('Step reached terminal state, stopping polling');
+        clearInterval(pollInterval);
+        return;
+      }
+      
+      console.log('Polling for messages...');
+      await fetchMessages();
+    }, 2000);
+    
+    return () => {
+      console.log('Cleanup: stopping polling for step:', selectedStep);
+      clearInterval(pollInterval);
+    };
+  }, [selectedStep, plan.session_id, plan.id]);
 
   const getStatusBadge = (status: string) => {
     const badges = {
@@ -93,29 +144,39 @@ export const PlanView: React.FC<PlanViewProps> = ({
   };
 
   // Helper to check if dependencies are met for a step
-  const checkDependenciesMet = (step: Step): { met: boolean; unmetDeps: Step[] } => {
+  const checkDependenciesMet = (step: Step): { met: boolean; unmetDeps: Step[]; hasRejectedDeps: boolean } => {
     if (!step.dependencies || step.dependencies.length === 0) {
-      return { met: true, unmetDeps: [] };
+      return { met: true, unmetDeps: [], hasRejectedDeps: false };
     }
 
     const unmetDeps: Step[] = [];
+    let hasRejectedDeps = false;
+    
     for (const depId of step.dependencies) {
       const depStep = plan.steps?.find(s => s.id === depId);
-      if (depStep && depStep.status !== 'completed') {
-        unmetDeps.push(depStep);
+      if (depStep) {
+        if (depStep.status === 'rejected') {
+          hasRejectedDeps = true;
+          unmetDeps.push(depStep);
+        } else if (depStep.status !== 'completed') {
+          unmetDeps.push(depStep);
+        }
       }
     }
 
     return {
       met: unmetDeps.length === 0,
-      unmetDeps
+      unmetDeps,
+      hasRejectedDeps
     };
   };
 
   const canApprove = (step: Step) => {
     const isPending = ['planned', 'awaiting_feedback'].includes(step.status);
-    const { met: dependenciesMet } = checkDependenciesMet(step);
-    return isPending && dependenciesMet;
+    const { met: dependenciesMet, hasRejectedDeps } = checkDependenciesMet(step);
+    
+    // Allow approval if dependencies are met OR if dependencies are rejected (user can decide to proceed anyway)
+    return isPending && (dependenciesMet || hasRejectedDeps);
   };
 
   const handleApprove = async (stepId: string) => {
@@ -231,24 +292,30 @@ export const PlanView: React.FC<PlanViewProps> = ({
     const steps = plan.steps || [];
     const completed = steps.filter(s => s.status === 'completed').length;
     const failed = steps.filter(s => s.status === 'failed').length;
+    const rejected = steps.filter(s => s.status === 'rejected').length;
     const inProgress = steps.filter(s => ['approved', 'awaiting_feedback'].includes(s.status)).length;
     const uniqueAgents = new Set(steps.map(s => s.agent)).size;
-    const progress = steps.length > 0 ? (completed / steps.length) * 100 : 0;
+    
+    // Progress calculation: count completed, failed, and rejected as "finished"
+    const finishedSteps = completed + failed + rejected;
+    const progress = steps.length > 0 ? (finishedSteps / steps.length) * 100 : 0;
     
     return {
       total: steps.length,
       completed,
       failed,
+      rejected,
       inProgress,
-      pending: steps.length - completed - failed - inProgress,
+      pending: steps.length - finishedSteps - inProgress,
       uniqueAgents,
       progress: Math.round(progress)
     };
   }, [plan.steps]);
 
   return (
-    <div className="flex gap-6 h-full">
-      {/* Left Panel - Plan and Steps List (Reduced to 40% width) */}
+    <div className="h-full flex flex-col">
+      {/* Main flex container with panels */}
+      <div className="flex gap-6 flex-1 min-h-0">{/* Left Panel - Plan and Steps List (Reduced to 40% width) */}
       <div className="w-2/5 space-y-4 overflow-y-auto pr-2">
         {/* Plan Header with Stats */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg shadow-lg border border-slate-700 p-5">
@@ -296,9 +363,14 @@ export const PlanView: React.FC<PlanViewProps> = ({
             </div>
             <div className="flex items-center justify-between mt-2 text-xs">
               <span className="text-slate-400">{stats.completed} of {stats.total} completed</span>
-              {stats.failed > 0 && (
-                <span className="text-error-400">{stats.failed} failed</span>
-              )}
+              <div className="flex gap-3">
+                {stats.rejected > 0 && (
+                  <span className="text-orange-400">{stats.rejected} rejected</span>
+                )}
+                {stats.failed > 0 && (
+                  <span className="text-error-400">{stats.failed} failed</span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -356,6 +428,14 @@ export const PlanView: React.FC<PlanViewProps> = ({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {getStatusBadge(step.status)}
+                    {step.manually_injected && (
+                      <span className="px-2 py-0.5 bg-purple-500/20 border border-purple-500/30 rounded text-xs font-medium text-purple-300 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Manual
+                      </span>
+                    )}
                     {step.tools && step.tools.length > 0 && (
                       <span className="px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded text-xs font-mono text-blue-300">
                         {step.tools[0]}
@@ -372,12 +452,20 @@ export const PlanView: React.FC<PlanViewProps> = ({
                           Depends on {step.dependencies.length} step{step.dependencies.length > 1 ? 's' : ''}
                         </span>
                         {(() => {
-                          const { met, unmetDeps } = checkDependenciesMet(step);
-                          return !met ? (
-                            <span className="ml-1 text-yellow-300">(⚠️ {unmetDeps.length} pending)</span>
-                          ) : (
-                            <span className="ml-1 text-green-400">(✓ ready)</span>
-                          );
+                          const { met, unmetDeps, hasRejectedDeps } = checkDependenciesMet(step);
+                          if (hasRejectedDeps) {
+                            return (
+                              <span className="ml-1 text-orange-400">(⚠️ {unmetDeps.filter(d => d.status === 'rejected').length} rejected - review needed)</span>
+                            );
+                          } else if (!met) {
+                            return (
+                              <span className="ml-1 text-yellow-300">(⚠️ {unmetDeps.length} pending)</span>
+                            );
+                          } else {
+                            return (
+                              <span className="ml-1 text-green-400">(✓ ready)</span>
+                            );
+                          }
                         })()}
                       </>
                     )}
@@ -387,14 +475,23 @@ export const PlanView: React.FC<PlanViewProps> = ({
                 {/* Compact Action Buttons */}
                 {canApprove(step) && (
                   <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => handleApprove(step.id)}
-                      disabled={isExecuting || isStepProcessing(step.id)}
-                      title="Approve & Execute"
-                      className="p-2 bg-success-600 hover:bg-success-700 text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                    </button>
+                    {(() => {
+                      const { hasRejectedDeps } = checkDependenciesMet(step);
+                      const approveTitle = hasRejectedDeps 
+                        ? "⚠️ Some dependencies were rejected. Approve to proceed anyway?"
+                        : "Approve & Execute";
+                      
+                      return (
+                        <button
+                          onClick={() => handleApprove(step.id)}
+                          disabled={isExecuting || isStepProcessing(step.id)}
+                          title={approveTitle}
+                          className={`p-2 ${hasRejectedDeps ? 'bg-orange-600 hover:bg-orange-700' : 'bg-success-600 hover:bg-success-700'} text-white rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => {
                         const reason = prompt('Reason for rejection (optional):');
@@ -580,6 +677,33 @@ export const PlanView: React.FC<PlanViewProps> = ({
           )}
         </div>
       </div>
+      </div>
+
+      {/* Task Injection - Only show for in-progress plans */}
+      {plan.overall_status === 'in_progress' && (
+        <div className="mt-4">
+          <TaskInjection
+            planId={plan.id}
+            sessionId={plan.session_id}
+            objective={plan.initial_goal}
+            currentSteps={plan.steps?.map(step => ({
+              id: step.id,
+              order: step.order || 0,
+              action: step.action,
+              agent: step.agent,
+              status: step.status
+            })) || []}
+            onTaskInjected={async () => {
+              // Refresh the plan to show the new task
+              if (onRefreshPlan) {
+                await onRefreshPlan();
+              } else {
+                window.location.reload(); // Fallback
+              }
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };

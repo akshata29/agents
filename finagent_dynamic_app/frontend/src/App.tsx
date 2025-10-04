@@ -202,6 +202,7 @@ function AppContent() {
                     });
                     await refreshPlan();
                   }}
+                  onRefreshPlan={refreshPlan}
                   isExecuting={false}
                 />
               </div>

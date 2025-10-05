@@ -66,13 +66,17 @@ export const createAndExecutePlan = async (
   sessionId: string,
   userId: string,
   description: string,
-  fileIds: string[]
+  fileIds: string[],
+  summaryType?: string,
+  persona?: string
 ): Promise<ActionResponse> => {
   const response = await api.post<ActionResponse>('/api/orchestration/execute-direct', {
     session_id: sessionId,
     user_id: userId,
     description,
     file_ids: fileIds,
+    summary_type: summaryType || 'detailed',
+    persona: persona || 'executive',
   });
   return response.data;
 };

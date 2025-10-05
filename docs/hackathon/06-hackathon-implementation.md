@@ -4,6 +4,70 @@
 
 This guide provides specific implementation strategies for each hackathon use case, mapping them to our framework patterns and providing concrete code examples you can build upon.
 
+## 🆕 What's New: Advanced Reference Applications
+
+We now have **4 production-grade reference applications** that demonstrate different aspects of the framework:
+
+### 1. **Deep Research App** - Three Execution Paradigms
+- Demonstrates YAML, Code-based, and MAF Workflows
+- Multi-modal research orchestration
+- Perfect for understanding different workflow approaches
+
+### 2. **Financial Research App (Static)** - Multi-Pattern Orchestration
+- Sequential, Concurrent, Handoff, and GroupChat patterns
+- 6 specialized financial agents
+- Real-world data integration (FMP, Yahoo Finance, SEC EDGAR)
+
+### 3. **Financial Research App (Dynamic)** - 🌟 NEW: ReAct Planning & Human-in-the-Loop
+- **Dynamic plan generation** using ReAct pattern
+- **Human approval workflow** for plan execution
+- **CosmosDB persistence** for plans, steps, and conversations
+- **Synthesis Agent Pattern**: Dual-context management for optimal performance
+- Perfect example for building flexible, user-guided workflows
+
+### 4. **Multimodal Insights App** - 🌟 NEW: Custom Copilot Experience
+- **Azure AI Services integration** (Speech-to-Text, Document Intelligence)
+- **Multimodal processing**: Audio, Video, PDF files
+- **ReAct-based planning** with iterative reasoning
+- **Persona-based outputs**: Executive, technical, general audience
+- Perfect example for building custom copilot experiences
+
+### Key Innovations to Learn From
+
+#### From Financial Dynamic App:
+```python
+# Synthesis Agent Pattern - Different context for different agent types
+if self._is_synthesis_agent(step):
+    # Synthesis agents need ALL previous outputs
+    context = await self._get_session_context(step)
+else:
+    # Data gathering agents only need explicit dependencies
+    context = await self._get_dependency_artifacts(step)
+```
+
+#### From Multimodal Insights App:
+```python
+# Azure AI Services Integration
+async def process_multimodal_file(file_path: str, file_type: str):
+    if file_type == "audio":
+        # Azure Speech-to-Text
+        return await azure_speech.transcribe(file_path)
+    elif file_type == "pdf":
+        # Azure Document Intelligence
+        return await azure_doc_intel.extract_content(file_path)
+```
+
+#### From Both Dynamic Apps:
+```python
+# Human-in-the-Loop Approval Workflow
+plan = await orchestrator.create_plan(objective)
+await ui.display_plan(plan)  # Show plan to user
+approved = await ui.get_approval()  # User approves specific steps
+results = await orchestrator.execute_approved_steps(approved)
+```
+
+---
+
 ## 📊 Hackathon Projects Matrix
 
 | Project | Primary Patterns | Key Technologies | Implementation Complexity | Business Value |
@@ -1280,22 +1344,311 @@ Continue with the remaining hackathon projects:
 
 ---
 
+## 🎯 Using Reference Apps as Templates
+
+### When to Use Each Reference App as Your Starting Point
+
+#### Use **Deep Research App** if you need:
+- ✅ Multiple execution modes (YAML, Code, MAF)
+- ✅ Flexibility in workflow definition
+- ✅ Research-oriented workflows
+- ✅ Multiple agent orchestration patterns
+- **Best for**: Orchestrator Enhancement, Multi-Modal Researcher
+
+#### Use **Financial Research App (Static)** if you need:
+- ✅ Multiple pattern demonstrations in one app
+- ✅ Specialized domain agents
+- ✅ External data source integration
+- ✅ PDF report generation
+- **Best for**: Data Retrieval Optimization, domain-specific agents
+
+#### Use **Financial Research App (Dynamic)** if you need:
+- ✅ **ReAct-based dynamic planning**
+- ✅ **Human-in-the-loop approval workflow**
+- ✅ **CosmosDB persistence**
+- ✅ **Synthesis agent pattern** for context optimization
+- ✅ Iterative, user-guided workflows
+- **Best for**: General Purpose Agent, Orchestrator Enhancement, any project needing dynamic planning
+
+#### Use **Multimodal Insights App** if you need:
+- ✅ **Azure AI Services integration** (Speech, Document Intelligence)
+- ✅ **Multimodal file processing** (audio, video, PDF)
+- ✅ **Custom Copilot UI/UX**
+- ✅ **Persona-based outputs**
+- ✅ File upload and analysis workflows
+- **Best for**: Multi-Modal Researcher, Real-Time Call Analysis, Custom Copilot projects
+
+### Quick Start Guide for Each Template
+
+#### Starting with Financial Dynamic App Template:
+
+```powershell
+# 1. Copy the template
+cd d:\repos\agent_foundation
+cp -r finagent_dynamic_app my_hackathon_project
+
+# 2. Update configuration
+cd my_hackathon_project\backend
+# Edit .env with your Azure OpenAI, CosmosDB settings
+
+# 3. Modify agents to your domain
+# - Keep the planner agent structure
+# - Replace financial agents with your domain agents
+# - Keep the task orchestrator pattern
+
+# 4. Update frontend for your domain
+cd ..\frontend
+# Modify src/components for your use case
+```
+
+#### Starting with Multimodal Insights App Template:
+
+```powershell
+# 1. Copy the template
+cd d:\repos\agent_foundation
+cp -r multimodal_insights_app my_multimodal_project
+
+# 2. Configure Azure AI services
+cd my_multimodal_project\backend
+# Edit .env with Azure Speech, Document Intelligence keys
+
+# 3. Customize processing agents
+# - Keep multimodal_processor_agent structure
+# - Modify analytics/sentiment/summarizer for your needs
+# - Keep the planner pattern
+
+# 4. Adapt UI for your workflow
+cd ..\frontend
+# Customize file upload and results display
+```
+
+### Key Files to Modify in Each Template
+
+#### Financial Dynamic App:
+```
+backend/
+  app/
+    agents/              # Replace with your domain agents
+      planner_agent.py   # Keep the ReAct planning pattern
+      [your_agent].py    # Your domain-specific agents
+    services/
+      task_orchestrator.py  # Keep the orchestration logic
+    persistence/
+      cosmos_memory.py   # Keep the persistence layer
+    models/
+      task_models.py     # Adapt models to your domain
+
+frontend/
+  src/
+    components/
+      TaskInput.tsx      # Customize for your input needs
+      PlanView.tsx       # Keep the plan visualization
+      StepCard.tsx       # Keep the approval workflow
+```
+
+#### Multimodal Insights App:
+```
+backend/
+  app/
+    agents/
+      multimodal_processor_agent.py  # Keep the Azure AI integration
+      planner_agent.py              # Keep the ReAct planning
+      [your_analysis_agent].py      # Your custom analysis agents
+    routers/
+      orchestration.py              # Adapt API endpoints
+    models/
+      request_models.py             # Customize for your needs
+
+frontend/
+  src/
+    components/
+      FileUpload.tsx     # Keep the file upload UI
+      PlanViewer.tsx     # Keep the plan display
+      ResultsViewer.tsx  # Customize results display
+```
+
+---
+
 ## 📚 Additional Implementation Resources
 
-### Performance Optimization
-- Use concurrent execution for independent analysis tasks
-- Implement caching for repeated LLM calls
-- Optimize token usage with content summarization
-- Use streaming responses for real-time feedback
+### Learning Path Recommendations
 
-### Quality Assurance
-- Implement comprehensive testing for each modality
-- Add confidence scoring for all analysis outputs
-- Include bias detection and mitigation strategies
-- Validate evidence sources and citations
+1. **Week 1: Understanding Patterns**
+   - Study Deep Research App for pattern basics
+   - Review Financial Static App for multi-pattern usage
+   - Run examples and understand execution flow
 
-### Monitoring and Observability
-- Track research session metrics
-- Monitor source quality over time
-- Measure analysis confidence trends
-- Alert on potential bias indicators
+2. **Week 2: Dynamic Planning**
+   - Deep dive into Financial Dynamic App
+   - Understand ReAct pattern implementation
+   - Study synthesis agent pattern
+   - Implement human-in-the-loop workflow
+
+3. **Week 3: Multimodal Processing**
+   - Study Multimodal Insights App
+   - Understand Azure AI Services integration
+   - Implement file processing workflows
+   - Build Custom Copilot UI
+
+4. **Week 4: Your Implementation**
+   - Choose the right template
+   - Customize for your domain
+   - Add your business logic
+   - Test and refine
+
+### Common Patterns Across All Apps
+
+#### 1. Agent Registration Pattern
+```python
+# All apps follow this pattern
+await agent_registry.register_agent(
+    agent_id="my_agent",
+    agent_instance=my_agent,
+    capabilities=["analysis", "reporting"]
+)
+```
+
+#### 2. Orchestrator Execution Pattern
+```python
+# Consistent across all apps
+result = await orchestrator.execute(
+    task="Your task description",
+    pattern=SelectedPattern(config={...}),
+    context={...},
+    metadata={...}
+)
+```
+
+#### 3. Context Management Pattern
+```python
+# All apps use rich context
+context = {
+    "domain_specific": {...},
+    "execution_metadata": {...},
+    "previous_results": {...}
+}
+```
+
+#### 4. Error Handling Pattern
+```python
+# Consistent error handling
+try:
+    result = await agent.run(messages, context=context)
+except Exception as e:
+    logger.error("Execution failed", error=str(e))
+    # Fallback or retry logic
+```
+
+### Performance Optimization Tips
+
+1. **From Financial Dynamic App**:
+   - Use dependency_artifacts for focused context (data gathering agents)
+   - Use session_context for comprehensive context (synthesis agents)
+   - This reduces token usage and improves performance
+
+2. **From Multimodal Insights App**:
+   - Process files asynchronously
+   - Cache extracted content in local JSON
+   - Use CosmosDB for session persistence
+   - Stream large file processing results
+
+3. **From Deep Research App**:
+   - Use concurrent patterns for independent tasks
+   - Implement caching for repeated LLM calls
+   - Optimize token usage with content summarization
+   - Use streaming responses for real-time feedback
+
+### Quality Assurance Best Practices
+
+1. **Testing Strategy**:
+   ```python
+   # Unit tests for agents
+   # Integration tests for orchestration
+   # End-to-end tests for workflows
+   ```
+
+2. **Validation**:
+   - Implement comprehensive testing for each modality
+   - Add confidence scoring for all analysis outputs
+   - Include bias detection and mitigation strategies
+   - Validate evidence sources and citations
+
+3. **Monitoring and Observability**:
+   - Track research session metrics (from all apps)
+   - Monitor source quality over time
+   - Measure analysis confidence trends
+   - Alert on potential bias indicators
+   - Use OpenTelemetry for distributed tracing
+
+### Workshop & Hackathon Tips
+
+1. **Start Simple**: Begin with one reference app, understand it fully, then customize
+2. **Focus on Patterns**: Don't reinvent orchestration - use existing patterns
+3. **Leverage CosmosDB**: Use it for persistence, don't build custom storage
+4. **Human-in-the-Loop**: Add approval workflows for better user control
+5. **Azure AI Services**: Leverage existing integrations (Speech, Document Intelligence)
+6. **ReAct Planning**: Use it for dynamic, adaptive workflows
+7. **Context Optimization**: Use the synthesis agent pattern for better performance
+8. **UI/UX**: Adapt existing Custom Copilot UI rather than building from scratch
+
+### Common Pitfalls to Avoid
+
+❌ **Don't**: Build custom orchestration when framework patterns exist
+✅ **Do**: Use framework patterns and customize through configuration
+
+❌ **Don't**: Create custom persistence without need
+✅ **Do**: Use CosmosDB patterns from dynamic apps
+
+❌ **Don't**: Send all context to all agents
+✅ **Do**: Use synthesis agent pattern for context optimization
+
+❌ **Don't**: Build file processing from scratch
+✅ **Do**: Use Azure AI Services integrations from multimodal app
+
+❌ **Don't**: Hardcode workflows
+✅ **Do**: Use ReAct planning for dynamic workflows
+
+---
+
+## 🎓 Workshop Exercises
+
+### Exercise 1: Deploy and Run All Reference Apps
+**Goal**: Understand each app's architecture
+**Time**: 2-3 hours
+
+1. Deploy Deep Research App
+2. Deploy Financial Research App (Static)
+3. Deploy Financial Research App (Dynamic)
+4. Deploy Multimodal Insights App
+5. Compare and contrast their approaches
+
+### Exercise 2: Customize Financial Dynamic App
+**Goal**: Learn dynamic planning pattern
+**Time**: 2-3 hours
+
+1. Clone finagent_dynamic_app
+2. Replace financial agents with your domain agents
+3. Update planner prompts for your domain
+4. Test the approval workflow
+
+### Exercise 3: Build Multimodal Processor
+**Goal**: Learn Azure AI integration
+**Time**: 2-3 hours
+
+1. Clone multimodal_insights_app
+2. Add support for new file type (e.g., Excel)
+3. Create custom analysis agent
+4. Test end-to-end processing
+
+### Exercise 4: Implement Synthesis Pattern
+**Goal**: Learn context optimization
+**Time**: 1-2 hours
+
+1. Study synthesis agent pattern docs
+2. Identify synthesis vs data gathering agents in your project
+3. Implement dual-context management
+4. Measure performance improvement
+
+---
+
+## 📚 Additional Implementation Resources

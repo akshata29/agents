@@ -31,10 +31,11 @@ Welcome to the comprehensive technical documentation for building multi-agent ap
 - Tools and MCP integration
 
 ### 5. [Reference Applications Analysis](./05-reference-apps.md)
-- Deep Research App architecture
-- Financial Research App patterns
-- Implementation strategies
-- Lessons learned
+- Deep Research App architecture (3 execution modes)
+- Financial Research App (Static) - Multi-pattern orchestration
+- Financial Research App (Dynamic) - ReAct planning & human-in-the-loop
+- Multimodal Insights App - Custom Copilot experience
+- Implementation strategies and lessons learned
 
 ### 6. [Hackathon Use Cases & Implementation](./06-hackathon-implementation.md)
 - Orchestrator Enhancement patterns

@@ -12,6 +12,8 @@ const HomePage: React.FC = () => {
   const { session, initializeSession, messages, addMessage, setCurrentPlan } = useSession();
   const [isExecuting, setIsExecuting] = useState(false);
   const [objective, setObjective] = useState('');
+  const [summaryType, setSummaryType] = useState('detailed');
+  const [persona, setPersona] = useState('executive');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,7 +54,9 @@ const HomePage: React.FC = () => {
         session.id,
         'default_user',
         objective,
-        fileIds
+        fileIds,
+        summaryType,
+        persona
       );
 
       // Store the plan information in session context
@@ -115,6 +119,41 @@ const HomePage: React.FC = () => {
             onSelectTask={handleQuickTaskSelect}
             disabled={isExecuting}
           />
+        </div>
+
+        {/* Summary Preferences */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Summary Type
+            </label>
+            <select
+              value={summaryType}
+              onChange={(e) => setSummaryType(e.target.value)}
+              disabled={isExecuting}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="brief">Brief - Quick overview</option>
+              <option value="detailed">Detailed - Comprehensive insights</option>
+              <option value="comprehensive">Comprehensive - Full analysis</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Target Audience
+            </label>
+            <select
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              disabled={isExecuting}
+              className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="executive">Executive - High-level insights</option>
+              <option value="technical">Technical - Detailed analysis</option>
+              <option value="general">General - Balanced overview</option>
+            </select>
+          </div>
         </div>
 
         {/* Custom Objective Input */}

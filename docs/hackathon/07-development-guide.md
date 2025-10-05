@@ -944,6 +944,87 @@ class MyAgent(BaseAgent):  # Must inherit from BaseAgent
 ### Getting Help
 
 - **Framework Documentation**: Check `docs/` directory
-- **Example Code**: See `examples/` directory  
+- **Reference Applications**: 
+  - `deep_research_app/` - Three execution paradigms (YAML, Code, MAF)
+  - `finagent_app/` - Multi-pattern orchestration (Static)
+  - `finagent_dynamic_app/` - **ReAct planning + Human-in-the-loop** 🌟
+  - `multimodal_insights_app/` - **Custom Copilot + Azure AI Services** 🌟
+- **Example Code**: See `framework/examples/` directory  
 - **Debug Logging**: Enable detailed logging for troubleshooting
 - **Community**: Join the developer community for support
+
+---
+
+## 🎯 Next Steps: Choose Your Reference App Template
+
+Now that you understand the basics, choose a reference app as your starting point:
+
+### Option 1: Start with Deep Research App
+**Best for**: Understanding orchestration patterns, multiple execution modes
+```powershell
+cd deep_research_app
+# Follow deep_research_app/README.md
+```
+
+### Option 2: Start with Financial Research App (Static)
+**Best for**: Learning all patterns, domain-specific agents
+```powershell
+cd finagent_app
+# Follow finagent_app/README.md
+```
+
+### Option 3: Start with Financial Research App (Dynamic) 🌟
+**Best for**: Dynamic planning, human-in-the-loop, CosmosDB persistence
+```powershell
+cd finagent_dynamic_app
+# Follow finagent_dynamic_app/GETTING_STARTED.md
+```
+**Key Features to Learn**:
+- ReAct-based dynamic planning
+- Human approval workflow
+- Synthesis agent pattern (context optimization)
+- CosmosDB persistence layer
+
+### Option 4: Start with Multimodal Insights App 🌟
+**Best for**: Multimodal processing, Azure AI Services, Custom Copilot UI
+```powershell
+cd multimodal_insights_app
+# Follow multimodal_insights_app/README.md
+```
+**Key Features to Learn**:
+- Azure Speech-to-Text integration
+- Azure Document Intelligence integration
+- Multimodal file processing (audio, video, PDF)
+- Persona-based summarization
+- Custom Copilot user experience
+
+---
+
+## 🎓 Recommended Learning Path
+
+1. **Day 1-2**: Complete this quickstart guide
+   - Build your first simple agent
+   - Create a basic workflow
+   - Understand framework basics
+
+2. **Day 3-4**: Study Deep Research App
+   - Understand three execution modes
+   - Learn orchestration patterns
+   - Run all three modes
+
+3. **Day 5-7**: Deep dive into Financial Dynamic App
+   - Study ReAct planning pattern
+   - Understand human-in-the-loop workflow
+   - Learn synthesis agent pattern
+   - Explore CosmosDB persistence
+
+4. **Day 8-10**: Explore Multimodal Insights App
+   - Learn Azure AI Services integration
+   - Build multimodal processing pipelines
+   - Create custom Copilot experiences
+
+5. **Day 11+**: Build Your Hackathon Project
+   - Choose appropriate template
+   - Customize for your domain
+   - Implement your business logic
+   - Test and refine

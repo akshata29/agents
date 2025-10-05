@@ -251,6 +251,16 @@ class InputTask(BaseModel):
     description: str
     file_ids: Optional[List[str]] = Field(default_factory=list)
     metadata: Optional[Dict[str, Any]] = None
+    
+    # User preferences for summary generation
+    summary_type: Optional[str] = Field(
+        default="detailed",
+        description="Type of summary: brief, detailed, or comprehensive"
+    )
+    persona: Optional[str] = Field(
+        default="executive",
+        description="Target audience persona: executive, technical, or general"
+    )
 
 
 class ActionRequest(BaseModel):

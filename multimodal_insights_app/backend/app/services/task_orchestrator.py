@@ -263,7 +263,9 @@ class TaskOrchestrator:
             # Use planner to create execution plan
             steps_plan = await self._generate_plan_with_planner(
                 planning_context,
-                files_info
+                files_info,
+                summary_type=input_task.summary_type,
+                persona=input_task.persona
             )
             
             logger.info(f"Steps plan generated",
@@ -376,10 +378,18 @@ Based on the user's objective and uploaded files, create an execution plan that 
     async def _generate_plan_with_planner(
         self,
         context: str,
-        files_info: List[Dict[str, str]]
+        files_info: List[Dict[str, str]],
+        summary_type: str = "detailed",
+        persona: str = "executive"
     ) -> List[Dict[str, Any]]:
         """
         Generate execution plan using LLM-powered DynamicPlanner.
+        
+        Args:
+            context: Planning context with objective and files
+            files_info: List of file information dictionaries
+            summary_type: Type of summary (brief, detailed, comprehensive)
+            persona: Target audience (executive, technical, general)
         
         Returns list of step dictionaries with action, agent, and parameters.
         """
@@ -406,15 +416,15 @@ Based on the user's objective and uploaded files, create an execution plan that 
         if has_pdf and not has_audio_video:
             # PDF document analysis
             if any(term in objective_lower for term in ["sec", "10-k", "10-q", "filing", "financial", "risk"]):
-                step_guidance = "For SEC/financial document analysis: Always process PDF with Document Intelligence (markdown output), then create comprehensive executive summary addressing all objective points, then perform analytics with risk/financial focus. SKIP sentiment analysis unless explicitly requested."
+                step_guidance = "For SEC/financial document analysis: Step 1 processes ALL files together. Then create comprehensive executive summary addressing all objective points, then perform analytics with risk/financial focus. SKIP sentiment analysis unless explicitly requested."
             else:
-                step_guidance = "For PDF documents: Always process with Document Intelligence, then summarize and analyze. SKIP sentiment analysis unless explicitly requested."
+                step_guidance = "For PDF documents: Step 1 processes ALL files together. Then summarize and analyze. SKIP sentiment analysis unless explicitly requested."
         elif has_audio_video and not has_pdf:
             # Audio/Video analysis
-            step_guidance = "For audio/video files: Always transcribe with Speech-to-Text, then analyze sentiment/emotions, summarize for intended audience, and extract insights."
+            step_guidance = "For audio/video files: Step 1 processes ALL files together (transcription via Speech-to-Text). Then analyze sentiment/emotions, summarize for intended audience, and extract insights."
         else:
-            # Mixed or no files
-            step_guidance = "Create a focused plan that addresses the objective. Include sentiment analysis only for audio/video or if explicitly requested."
+            # Mixed files
+            step_guidance = "For mixed file types: Step 1 processes ALL files together (audio via Speech-to-Text, PDF via Document Intelligence). Then create analysis plan that addresses the objective. Include sentiment analysis only for audio/video content or if explicitly requested."
         
         # Create detailed planning prompt
         planning_task = f"""Create a multimodal content analysis plan for:
@@ -423,20 +433,20 @@ Based on the user's objective and uploaded files, create an execution plan that 
 {files_summary}
 
 ⚠️ CRITICAL PLANNING RULES:
-1. ALWAYS start with file processing (Step 1) if files are uploaded
+1. ALWAYS create EXACTLY ONE file processing step (Step 1) that processes ALL uploaded files together
 2. Choose analysis agents based on file type and objective keywords:
    - Sentiment: ONLY for audio/video files OR if explicitly requested (keywords: sentiment, emotion, tone, feeling)
    - Summarizer: ALWAYS include for comprehensive analysis (use objective to determine persona and type)
    - Analytics: Include when analysis, insights, patterns, recommendations, or extraction is requested
 3. Pass the FULL objective as "objective_context" parameter to Summarizer and Analytics agents
 4. For SEC/financial documents: use comprehensive executive summary + analytics with risk/financial focus
+5. All analysis steps work on the COMBINED content from all files
 
 Available Agents:
-1. MultimodalProcessor_Agent - File processing (ALWAYS Step 1)
+1. MultimodalProcessor_Agent - File processing (ALWAYS Step 1, ONE STEP ONLY)
    Tools:
-   - process_audio: Transcribe audio via Azure Speech-to-Text
-   - process_video: Extract audio and transcribe
-   - process_pdf: Extract content via Azure Document Intelligence (markdown output)
+   - process_files: Process ALL uploaded files (audio, video, PDF) in a single step
+   ⚠️ IMPORTANT: Create only ONE step that processes all files together, not separate steps per file
 
 2. Sentiment_Agent - Sentiment and emotion analysis
    Tools:
@@ -462,25 +472,31 @@ CRITICAL FORMATTING RULES:
 - Agent names MUST match exactly: MultimodalProcessor_Agent, Sentiment_Agent, Summarizer_Agent, Analytics_Agent
 - ALWAYS include Parameters field for Summarizer and Analytics with objective_context
 - NO dependencies (sequential execution handles this automatically)
+- Step 1 MUST be MultimodalProcessor_Agent and process ALL files in ONE step
 
 EXACT FORMAT EXAMPLES:
 
 Example 1 - SEC Document Analysis:
-Step 1: Process SEC 10-K PDF document to extract content in markdown format. Agent: MultimodalProcessor_Agent. Tool: process_pdf
-Step 2: Create comprehensive executive summary covering all objective requirements (risk factors, financial metrics, strategic insights). Agent: Summarizer_Agent. Tool: summarize. Parameters: {{summary_type: comprehensive, persona: executive, objective_context: <full_objective>}}
+Step 1: Process uploaded files to extract content using appropriate Azure services (Speech-to-Text for audio, Document Intelligence for PDF). Agent: MultimodalProcessor_Agent. Tool: process_files
+Step 2: Create {summary_type} {persona} summary covering all objective requirements (risk factors, financial metrics, strategic insights). Agent: Summarizer_Agent. Tool: summarize. Parameters: {{summary_type: {summary_type}, persona: {persona}, objective_context: <full_objective>}}
 Step 3: Perform deep analytics focusing on risk analysis, financial metrics, and strategic insights as specified in objective. Agent: Analytics_Agent. Tool: analyze. Parameters: {{analysis_focus: [risk_analysis, financial_metrics, strategic_insights], objective_context: <full_objective>}}
 
-Example 2 - Audio Transcription with Analysis:
-Step 1: Transcribe audio file using Azure Speech-to-Text. Agent: MultimodalProcessor_Agent. Tool: process_audio
-Step 2: Analyze sentiment, emotions, and tone in the transcription. Agent: Sentiment_Agent. Tool: analyze_sentiment
-Step 3: Create executive summary of key discussion points. Agent: Summarizer_Agent. Tool: summarize. Parameters: {{summary_type: detailed, persona: executive, objective_context: <full_objective>}}
-Step 4: Extract insights and recommendations from conversation. Agent: Analytics_Agent. Tool: analyze. Parameters: {{analysis_focus: [conversation, recommendations], objective_context: <full_objective>}}
+Example 2 - Audio + PDF Analysis:
+Step 1: Process uploaded files (audio transcription via Speech-to-Text, PDF extraction via Document Intelligence). Agent: MultimodalProcessor_Agent. Tool: process_files
+Step 2: Analyze sentiment and emotions from the audio transcription. Agent: Sentiment_Agent. Tool: analyze_sentiment
+Step 3: Create {summary_type} {persona} summary combining insights from both audio and document. Agent: Summarizer_Agent. Tool: summarize. Parameters: {{summary_type: {summary_type}, persona: {persona}, objective_context: <full_objective>}}
+Step 4: Extract insights, patterns, and recommendations from combined content. Agent: Analytics_Agent. Tool: analyze. Parameters: {{analysis_focus: [strategic_insights, recommendations], objective_context: <full_objective>}}
+
+USER PREFERENCES:
+- Summary Type: {summary_type} (use this for all Summarizer_Agent steps)
+- Persona: {persona} (use this for all Summarizer_Agent steps)
 
 RULES:
 - NO meta-planning, headers, or separators - ONLY numbered action steps
 - Be specific about what each step does
 - Include ALL required parameters
 - Use exact agent and tool names
+- Step 1 MUST process ALL files in ONE step
 
 OUTPUT FORMAT - Return ONLY the numbered steps:
 Step 1: [Action]. Agent: agent_name. Tool: tool_name
@@ -774,9 +790,13 @@ Step 2: [Action]. Agent: agent_name. Tool: tool_name. Parameters: {{param: value
                                 logger.error(error_msg, file_id=file_id, raw_result=result_content[:200])
                                 raise ValueError(error_msg)
                         
-                        # Update step with results
+                        # Update step with results - wrap in 'results' for frontend compatibility
+                        extracted_content = execution_context.get("extracted_content", {})
                         step.agent_reply = json.dumps(
-                            execution_context.get("extracted_content", {}),
+                            {
+                                "results": extracted_content,
+                                "processed_files": len(extracted_content)
+                            },
                             ensure_ascii=False,
                             default=str
                         )
@@ -1031,6 +1051,7 @@ Step 2: [Action]. Agent: agent_name. Tool: tool_name. Parameters: {{param: value
     ) -> Dict[str, Any]:
         """Execute sentiment analysis on extracted content."""
         extracted_content = context.get("extracted_content", {})
+        plan = context.get("plan")
         
         # Combine all text content
         all_text = []
@@ -1042,8 +1063,14 @@ Step 2: [Action]. Agent: agent_name. Tool: tool_name. Parameters: {{param: value
         
         combined_text = "\n\n".join(all_text)
         
-        # Perform sentiment analysis
-        result = await self.sentiment_agent.analyze_sentiment(combined_text)
+        # Build context with objective
+        analysis_context = {
+            "file_type": "combined",
+            "objective_context": plan.objective if plan else None
+        }
+        
+        # Perform sentiment analysis with objective context
+        result = await self.sentiment_agent.analyze_sentiment(combined_text, analysis_context)
         context["sentiment_results"] = result
         
         return result

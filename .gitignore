@@ -120,3 +120,4 @@ node_modules*
 .next*
 frontend/node_modules
 frontend/package-lock.json
+finagent_dynamic_app/backend/app/static/*

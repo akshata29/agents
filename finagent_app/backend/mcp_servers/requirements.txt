@@ -1,9 +1,17 @@
 # Yahoo Finance MCP Server Requirements
 # Compatible with the finagent_app backend
 
+# FastAPI for HTTP wrapper
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
 # MCP Server Framework
 mcp>=1.0.0
 fastmcp>=0.2.0
+
+# SSE Transport
+httpx>=0.27.0
+sse-starlette>=2.0.0
 
 # Yahoo Finance Data
 yfinance>=0.2.50

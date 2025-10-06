@@ -1,170 +1,332 @@
-# Multimodal Insights Application
+# Multimodal Insights Multi-Agent Application
 
-A production-grade multi-agent system built on the Microsoft Agent Framework for processing and analyzing multimodal content (audio, video, PDF) through coordinated AI agents.
+> **Production-grade AI-powered multimodal content analysis system** with dynamic planning, human-in-the-loop approval, and specialized agents for audio, video, and PDF processing.
 
-## Overview
+![Multimodal Insights App](docs/images/homepage.png)
 
-This application provides comprehensive multimodal content analysis capabilities through specialized AI agents that process, extract, analyze, and synthesize insights from various input formats. It features a Custom Copilot-style experience where users can upload multiple files and receive intelligent, context-aware analysis.
+## 🎯 Overview
 
-## Key Features
+A sophisticated multimodal content analysis platform built on the **Microsoft Agent Framework**. The application processes and analyzes audio, video, and PDF files through coordinated AI agents, featuring dynamic planning, real-time execution, and comprehensive insights extraction. Designed with a Custom Copilot-style experience for intelligent, context-aware analysis.
 
-- **Multimodal Input Processing**: Upload and process audio, video, and PDF files
-- **Azure AI Integration**: Leverages Azure Speech-to-Text and Document Intelligence
-- **Intelligent Agent Orchestration**: Dynamic planning and execution using Microsoft Agent Framework patterns
-- **Sentiment Analysis**: Deep sentiment analysis on extracted content
-- **Flexible Summarization**: Generate multiple summaries with persona-based customization
-- **Dynamic Analytics**: Context-aware analytics with intelligent insights extraction
-- **Real-time Progress Tracking**: Live updates as agents process tasks
-- **Export Capabilities**: Export results in Markdown, PDF, and other formats
+### Key Highlights
 
-## Architecture
+- 🎤 **Multimodal Processing** - Audio, video, and PDF file support with Azure AI Services
+- 🤖 **Dynamic AI Planning** - ReAct-based planner creates optimal analysis strategies
+- 👥 **Human-in-the-Loop** - Approve, reject, or modify each step before execution
+- 📊 **Intelligent Analytics** - Context-aware insights with pattern recognition
+- 💭 **Sentiment Analysis** - Multi-dimensional emotion and tone detection
+- 📝 **Flexible Summarization** - Persona-based summaries (executive, technical, general)
+- 💾 **Persistent State** - CosmosDB-backed session management
+- 📱 **Modern UI** - Clean, responsive interface with file upload and task visualization
+
+## 📸 Application Screenshots
+
+### Homepage - File Upload and Objective Input
+![Homepage](docs/images/homepage.png)
+*Upload multimodal files and describe your analysis objective*
+
+### Dynamic Analysis Plan
+![Multimodal Insights](docs/images/multimodal_insights.png)
+*AI-generated execution plan with step dependencies for multimodal content*
+
+### Analysis in Progress
+![Analysis In Progress](docs/images/analysis_in_progress.png)
+*Real-time execution status with live progress updates across agents*
+
+### Completed Task Details - Audio Processing
+![Task Detail 1](docs/images/completed_task_detail_1.png)
+*Detailed view of audio transcription results*
+
+### Completed Task Details - Sentiment Analysis
+![Task Detail 2](docs/images/completed_task_detail_2.png)
+*Multi-dimensional sentiment analysis with emotion detection*
+
+### Completed Task Details - Summarization
+![Task Detail 3](docs/images/completed_task_detail_3.png)
+*Flexible summarization with different detail levels*
+
+### Completed Task Details - Analytics Insights
+![Task Detail 4](docs/images/completed_task_detail_4.png)
+*Context-aware analytics with actionable insights*
+
+### Analysis History
+![History](docs/images/history.png)
+*Access and review past analysis sessions*
+
+## 🏗️ Architecture
 
 ```
 multimodal_insights_app/
-├── backend/              # FastAPI backend
+├── backend/                          # FastAPI Backend
 │   ├── app/
-│   │   ├── agents/      # Agent implementations
+│   │   ├── main.py                  # FastAPI application entry point
+│   │   ├── agents/                  # Agent implementations
 │   │   │   ├── multimodal_processor_agent.py  # Audio/Video/PDF processing
 │   │   │   ├── sentiment_agent.py              # Sentiment analysis
 │   │   │   ├── summarizer_agent.py            # Flexible summarization
 │   │   │   ├── analytics_agent.py             # Dynamic analytics
 │   │   │   └── planner_agent.py               # ReAct-based planner
-│   │   ├── routers/     # API routes
-│   │   ├── services/    # Core services (orchestrator, file handler)
-│   │   ├── models/      # Request/response DTOs
-│   │   ├── persistence/ # CosmosDB integration
-│   │   ├── infra/       # Settings, telemetry
-│   │   ├── auth/        # Authentication
-│   │   └── tools/       # Agent tools
-│   ├── data/            # Extracted content storage (JSON)
-│   └── uploads/         # Temporary file uploads
-├── frontend/            # React + TypeScript + Vite UI
-│   └── src/
-│       ├── components/  # UI components
-│       ├── hooks/       # React hooks
-│       └── lib/         # Utilities
-├── docs/                # Documentation
-└── scripts/             # Dev and deployment scripts
+│   │   ├── models/
+│   │   │   └── task_models.py       # Plan, Step, Message models
+│   │   ├── persistence/
+│   │   │   ├── memory_store_base.py # Abstract persistence interface
+│   │   │   └── cosmos_memory.py     # CosmosDB implementation
+│   │   ├── services/
+│   │   │   ├── task_orchestrator.py # Bridges framework patterns & Cosmos
+│   │   │   └── file_handler.py      # File upload and processing
+│   │   ├── routers/
+│   │   │   └── orchestration.py     # REST API endpoints
+│   │   ├── infra/
+│   │   │   ├── settings.py          # Configuration management
+│   │   │   └── telemetry.py         # Observability service
+│   │   ├── auth/                    # Authentication (Azure AD)
+│   │   └── tools/                   # Agent tools and utilities
+│   ├── data/                        # Extracted content storage (JSON)
+│   ├── uploads/                     # Temporary file uploads
+│   ├── requirements.txt             # Python dependencies
+│   ├── .env.example                 # Environment configuration template
+│   └── start.ps1                    # Backend startup script
+│
+├── frontend/                        # React + TypeScript + Vite Frontend
+│   ├── src/
+│   │   ├── App.tsx                  # Main application component
+│   │   ├── main.tsx                 # React entry point
+│   │   ├── lib/
+│   │   │   └── api.ts               # API client for backend
+│   │   └── components/
+│   │       ├── FileUpload.tsx       # File upload component
+│   │       ├── TaskInput.tsx        # Analysis objective form
+│   │       ├── PlanView.tsx         # Plan display with steps
+│   │       ├── StepCard.tsx         # Step card with approve/reject
+│   │       ├── ConversationView.tsx # Message timeline
+│   │       └── HistoryView.tsx      # Session history browser
+│   ├── package.json                 # Node dependencies
+│   ├── .env                         # Frontend config
+│   └── tailwind.config.js           # TailwindCSS configuration
+│
+├── docs/                            # Documentation
+│   ├── images/                      # Screenshots
+│   └── QUICKSTART.md               # Quick start guide
+│
+├── scripts/
+│   ├── setup_backend.ps1            # Backend setup automation
+│   ├── setup_frontend.ps1           # Frontend setup automation
+│   └── dev.ps1                      # Development startup script
+│
+├── deploy.ps1                       # Azure deployment script
+├── Dockerfile                       # Multi-stage Docker build
+└── README.md                        # This file
 ```
 
-## Agents
+## 🤖 AI Agents
 
-### Multimodal Processor Agent
-- **Audio Processing**: Transcription via Azure Speech-to-Text
-- **Video Processing**: Extract audio + transcription, frame analysis
-- **PDF Processing**: Content extraction via Azure Document Intelligence
-- **Metadata Extraction**: Extract and store comprehensive metadata
-- **Local Storage**: Store extracted content in JSON format
+### Multimodal Processor Agent 🎬
+**Azure AI Services Integration** - Audio, Video, and PDF processing
 
-### Sentiment Analysis Agent
-- Multi-dimensional sentiment analysis
-- Emotion detection
-- Tone and intent classification
-- Speaker/section-based sentiment tracking
-- Confidence scoring
+- **Audio Processing**:
+  - Transcription via Azure Speech-to-Text
+  - Speaker diarization
+  - Timestamp extraction
+  - Metadata preservation (duration, format, quality)
+  
+- **Video Processing**:
+  - Audio track extraction and transcription
+  - Frame analysis (optional)
+  - Scene detection
+  - Metadata extraction (resolution, duration, codec)
 
-### Summarizer Agent
-- Multi-level summarization (brief, detailed, comprehensive)
-- Persona-based summaries (executive, technical, general audience)
-- Multi-document synthesis
-- Key points extraction
-- Customizable summary formats
+- **PDF Processing**:
+  - Content extraction via Azure Document Intelligence
+  - Table and figure detection
+  - Layout preservation
+  - Metadata extraction (pages, author, creation date)
 
-### Analytics Agent
-- Context-aware analytics
-- Dynamic insight generation
-- Pattern recognition
-- Product/service analysis
-- Recommendation extraction
-- Next-best-action identification
-- Trend analysis
+- **Storage**:
+  - Extracted content saved as JSON
+  - Local file system storage
+  - Session-based organization
+  - Metadata preservation
 
-### Planner Agent (ReAct Pattern)
-- Dynamic task planning
-- Iterative reasoning
-- Agent capability assessment
-- Step-by-step execution planning
-- Human-in-the-loop approval workflow
+### Sentiment Analysis Agent 💭
+Multi-dimensional sentiment and emotion detection
 
-## Orchestration Patterns
+- **Capabilities**:
+  - Overall sentiment classification (Positive/Negative/Neutral)
+  - Emotion detection (Joy, Anger, Sadness, Fear, Surprise)
+  - Tone classification (Professional, Casual, Formal, etc.)
+  - Intent identification
+  - Speaker/section-based sentiment tracking
+  - Confidence scoring for all classifications
 
-The application uses Microsoft Agent Framework patterns:
+- **Analysis Levels**:
+  - Document-level sentiment
+  - Paragraph/section sentiment
+  - Sentence-level sentiment
+  - Speaker-based sentiment (for audio/video)
 
-### 1. ReAct Pattern (Planning)
-- Used by Planner Agent for dynamic plan generation
-- Observe → Think → Act → Reflect loop
-- Adapts to user objectives and available files
+- **Output**:
+  - Sentiment scores and labels
+  - Emotional breakdown
+  - Tone analysis
+  - Sentiment timeline (for time-based content)
 
-### 2. Handoff Pattern (Execution)
-- Single-agent tasks with specialist delegation
-- Used for straightforward processing tasks
+### Summarizer Agent 📝
+Flexible, persona-based summarization
 
-### 3. GroupChat Pattern (Collaboration)
-- Multi-agent collaboration for complex analysis
-- Used when multiple perspectives are needed
+- **Summarization Levels**:
+  - **Brief**: 1-2 paragraph high-level overview
+  - **Detailed**: Comprehensive summary with key points
+  - **Comprehensive**: In-depth analysis with supporting details
 
-## Tech Stack
+- **Persona-Based Summaries**:
+  - **Executive**: Business-focused, high-level insights
+  - **Technical**: Detailed technical analysis and specifications
+  - **General Audience**: Easy-to-understand language
 
-### Backend
-- **Framework**: FastAPI + Microsoft Agent Framework
-- **AI Services**: Azure OpenAI, Azure Speech, Azure Document Intelligence
-- **Storage**: Azure CosmosDB (persistence), Local JSON (extracted content)
-- **Auth**: Azure AD integration
+- **Capabilities**:
+  - Multi-document synthesis
+  - Key points extraction with priority ranking
+  - Action items identification
+  - Decision recommendations
+  - Customizable summary formats (bullets, paragraphs, tables)
 
-### Frontend
-- **Framework**: React 18 + TypeScript
-- **Build Tool**: Vite
-- **Styling**: TailwindCSS
-- **State Management**: React Query
-- **UI Components**: Lucide Icons
+- **Features**:
+  - Context-aware summarization
+  - Preservation of critical information
+  - Citation of source documents
+  - Length control (word/character count)
 
-## API Endpoints
+### Analytics Agent 📊
+Context-aware intelligent analytics
 
-### Task Management
-- `POST /api/input_task` - Create plan from objective with file uploads
-- `GET /api/plans/{session_id}/{plan_id}` - Get plan details
-- `POST /api/plans/{session_id}/{plan_id}/approve` - Approve plan steps
-- `POST /api/plans/{session_id}/{plan_id}/execute` - Execute approved steps
-- `GET /api/plans/{session_id}/{plan_id}/status` - Get execution status
+- **Dynamic Insights**:
+  - Pattern recognition across content
+  - Trend analysis
+  - Anomaly detection
+  - Correlation identification
 
-### File Management
-- `POST /api/upload` - Upload multimodal files
-- `GET /api/files/{session_id}` - List uploaded files
-- `GET /api/extracted/{session_id}` - Get extracted content
+- **Domain-Specific Analysis**:
+  - Product/service mentions
+  - Feature requests and feedback
+  - Customer pain points
+  - Competitive intelligence
+  - Market trends
 
-### Export
-- `POST /api/export/markdown` - Export as Markdown
-- `POST /api/export/pdf` - Export as PDF
-- `POST /api/export/json` - Export as JSON
+- **Recommendations**:
+  - Next-best-action suggestions
+  - Improvement opportunities
+  - Risk identification
+  - Priority ranking
 
-## Getting Started
+- **Visualization Ready**:
+  - Structured data output
+  - Metrics and KPIs
+  - Categorical breakdowns
+  - Time-series data
+
+### Planner Agent (Dynamic Planning) 🧠
+**ReAct Pattern Implementation**
+
+- **Capabilities**:
+  - Analyzes analysis objectives
+  - Assesses uploaded files (type, count, size)
+  - Determines optimal agent sequence
+  - Identifies task dependencies
+  - Creates step-by-step execution plan
+
+- **Planning Algorithm**:
+  1. Parse user objective
+  2. Analyze uploaded files
+  3. Determine required processing steps
+  4. Match capabilities to agents
+  5. Identify dependencies
+  6. Generate executable plan with tool mappings
+
+- **Adaptive Planning**:
+  - Adjusts plan based on file types
+  - Optimizes for parallel execution where possible
+  - Handles multi-document scenarios
+  - Considers user-specified constraints
+
+## ✨ Key Features
+
+### 1. Multimodal File Processing
+- **Audio Files**: MP3, WAV, M4A, OGG with Azure Speech-to-Text
+- **Video Files**: MP4, AVI, MOV with audio extraction and transcription
+- **PDF Files**: Document Intelligence for layout-preserving extraction
+- **File Management**: Upload multiple files, track processing status
+- **Metadata Preservation**: Comprehensive metadata capture and storage
+
+### 2. Dynamic Planning with ReAct
+- **Intelligent Analysis**: AI analyzes objective and files to create optimal plan
+- **Multi-File Handling**: Processes multiple files with coordinated steps
+- **Dependency Management**: Automatically identifies step dependencies
+- **Agent Orchestration**: Selects and sequences agents based on requirements
+
+### 3. Human-in-the-Loop Approval
+- **Plan Review**: See complete analysis plan before execution
+- **Step Control**: Approve, reject, or skip individual steps
+- **Execution Control**: Start, pause, or cancel analysis
+- **Transparency**: Full visibility into agent actions and reasoning
+
+### 4. Azure AI Services Integration
+- **Azure Speech Services**: High-quality transcription with diarization
+- **Azure Document Intelligence**: Advanced PDF extraction with layout
+- **Azure OpenAI**: GPT-4 for analysis, sentiment, and insights
+- **Managed Identity**: Secure, credential-less Azure service access
+
+### 5. Flexible Summarization
+- **Multiple Levels**: Brief, detailed, comprehensive summaries
+- **Persona-Based**: Tailor summaries for different audiences
+- **Multi-Document**: Synthesize insights across multiple files
+- **Customizable**: Control length, format, and focus areas
+
+### 6. Context-Aware Analytics
+- **Intelligent Insights**: Pattern and trend recognition
+- **Domain Adaptation**: Adjusts analysis based on content type
+- **Actionable Recommendations**: Next steps and improvement suggestions
+- **Visualization Ready**: Structured output for charts and graphs
+
+### 7. Persistent State Management
+- **CosmosDB Backend**: All plans, steps, and messages stored
+- **Session Continuity**: Resume analysis across sessions
+- **History Access**: Review past analyses and results
+- **Export Capabilities**: Markdown, PDF, JSON export
+
+### 8. Modern, Responsive UI
+- **File Upload**: Drag-and-drop or click to upload
+- **Real-Time Progress**: Live updates during processing
+- **Result Visualization**: Clean display of insights and summaries
+- **Mobile Friendly**: Works on desktop, tablet, and mobile
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Azure subscription with:
-  - Azure OpenAI
-  - Azure Speech Services
-  - Azure Document Intelligence
-  - Azure CosmosDB
 
-### Installation
+- **Python 3.11+**
+- **Node.js 18+**
+- **Azure OpenAI** account with GPT-4 deployment
+- **Azure Speech Services** (for audio/video transcription)
+- **Azure Document Intelligence** (for PDF processing)
+- **Azure Cosmos DB** account (for state management)
 
-1. **Clone the repository**
-```bash
-cd d:\repos\agent_foundation\multimodal_insights_app
-```
+### Quick Start
 
-2. **Setup Backend**
+#### 1. Backend Setup
+
 ```powershell
-cd backend
+cd multimodal_insights_app\backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-3. **Configure Environment**
-Create `.env` file in `backend/` directory:
+Create `.env` file from template:
+```powershell
+cp .env.example .env
+```
+
+Edit `.env` with your configuration:
 ```env
 # Azure OpenAI
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
@@ -191,90 +353,147 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 MAX_UPLOAD_SIZE=104857600  # 100MB
 ```
 
-4. **Setup Frontend**
+Run backend:
 ```powershell
-cd ..\frontend
-npm install
-```
-
-5. **Run Application**
-
-Backend:
-```powershell
-cd backend
 .\start.ps1
 ```
+Backend will be available at `http://localhost:8000`
 
-Frontend:
+#### 2. Frontend Setup
+
 ```powershell
-cd frontend
+cd multimodal_insights_app\frontend
+npm install
 npm run dev
 ```
+Frontend will be available at `http://localhost:5173`
 
-Access the application at: `http://localhost:5173`
+### Using the Application
 
-## Usage
+1. **Upload Files**: 
+   - Drag and drop or click to upload audio, video, or PDF files
+   - Multiple files supported
+   - See file list with processing status
 
-### Basic Workflow
+2. **Enter Objective**:
+   - Type: "Analyze sentiment and create executive summary"
+   - The AI planner creates an optimal execution plan
 
-1. **Upload Files**: Upload audio, video, or PDF files
-2. **Enter Objective**: Describe what you want to analyze
-3. **Review Plan**: System generates execution plan with steps
-4. **Approve Steps**: Review and approve planned steps
-5. **Monitor Execution**: Watch real-time progress as agents work
-6. **Review Results**: Examine insights, summaries, and analytics
-7. **Export**: Download results in preferred format
+3. **Review Generated Plan**:
+   - See which agents will be used
+   - Review step dependencies
+   - Understand the execution order
 
-### Example Use Cases
+4. **Approve Steps**:
+   - Click "Approve" on each step
+   - Or click "Reject" to skip steps
 
-#### Customer Call Analysis
-- Upload: Audio recording of customer call
-- Objective: "Analyze this customer call for sentiment, products discussed, and recommendations"
-- Agents: Processor → Sentiment → Analytics → Summarizer
+5. **Monitor Execution**:
+   - Watch real-time progress
+   - See agent outputs as they complete
+   - View extracted content and insights
 
-#### Multi-Document Research
-- Upload: Multiple PDFs and audio files
-- Objective: "Synthesize key insights and create executive summary"
-- Agents: Processor → Summarizer (persona: executive) → Analytics
+6. **Review Results**:
+   - Access transcriptions, summaries, sentiment analysis
+   - View analytics and recommendations
+   - Export results in preferred format
 
-#### Video Content Analysis
-- Upload: Marketing video
-- Objective: "Analyze tone, key messages, and audience sentiment"
-- Agents: Processor → Sentiment → Analytics
+## 🐳 Deployment
 
-## Development
+### Deploy to Azure (Automated)
 
-### Running Tests
 ```powershell
-cd backend
-pytest
+.\deploy.ps1 `
+  -ResourceGroup "your-rg-name" `
+  -Location "eastus" `
+  -AppServicePlanName "your-plan" `
+  -WebAppName "your-webapp"
 ```
 
-### Code Formatting
-```powershell
-black app/
-ruff check app/
+This will:
+1. ✅ Build and push Docker image to Azure Container Registry
+2. ✅ Deploy Web App (backend + frontend) to Azure App Service
+3. ✅ Configure all environment variables
+4. ✅ Set up Azure service connections
+
+## 🛠️ Tech Stack
+
+### Backend
+- **FastAPI** - Modern Python web framework
+- **Microsoft Agent Framework** - Agent orchestration and patterns
+- **Azure OpenAI** - GPT-4 for intelligence
+- **Azure Speech Services** - Audio transcription
+- **Azure Document Intelligence** - PDF extraction
+- **Azure Cosmos DB** - NoSQL database for state
+- **Pydantic** - Data validation
+- **Structlog** - Structured logging
+
+### Frontend
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool and dev server
+- **TailwindCSS** - Utility-first styling
+- **Lucide React** - Icon library
+- **Axios** - HTTP client
+
+### Infrastructure
+- **Azure App Service** - Web app hosting
+- **Azure Container Registry** - Docker image storage
+- **Azure Cosmos DB** - State persistence
+- **Azure Storage** - File storage (optional)
+- **Azure Application Insights** - Monitoring (optional)
+
+## 📚 Example Use Cases
+
+### Customer Call Analysis
+```
+Files: customer_call.mp3
+Objective: "Analyze this customer call for sentiment, products discussed, and action items"
+Agents: Processor → Sentiment → Analytics → Summarizer
+Result: Sentiment scores, product mentions, recommendations, executive summary
 ```
 
-### Build Frontend
-```powershell
-cd frontend
-npm run build
+### Multi-Document Research
+```
+Files: research_paper.pdf, webinar_recording.mp4, interview.mp3
+Objective: "Synthesize key insights and create technical summary"
+Agents: Processor (3x) → Summarizer (persona: technical) → Analytics
+Result: Combined insights, technical summary, trend analysis
 ```
 
-## Architecture Patterns
+### Video Content Analysis
+```
+Files: marketing_video.mp4
+Objective: "Analyze tone, key messages, and audience sentiment"
+Agents: Processor → Sentiment → Analytics
+Result: Tone classification, message extraction, sentiment timeline
+```
 
-This application implements:
-- **ReAct Pattern**: Dynamic planning with iterative reasoning
-- **Handoff Pattern**: Single-agent task execution with delegation
-- **GroupChat Pattern**: Multi-agent collaboration
-- **Human-in-the-Loop**: Approval workflow for all executions
-- **Event-Driven Progress**: Real-time status updates via WebSockets
+### PDF Report Analysis
+```
+Files: quarterly_report.pdf, presentation.pdf
+Objective: "Extract key metrics and generate executive summary"
+Agents: Processor (2x) → Analytics → Summarizer (persona: executive)
+Result: Key metrics, trends, executive summary
+```
 
-## License
+## 📝 License
 
-MIT License
+MIT License - See LICENSE file for details
 
-## Contributing
+## 🙏 Acknowledgments
 
-Contributions welcome! Please follow the existing code structure and patterns from `finagent_dynamic_app`.
+Built with:
+- [Microsoft Agent Framework](https://github.com/microsoft/agent-framework)
+- [Azure AI Services](https://azure.microsoft.com/en-us/products/ai-services/)
+- Inspired by [finagent_dynamic_app](../finagent_dynamic_app)
+
+## 📞 Support
+
+- **Documentation**: See `/docs` folder
+- **Issues**: [GitHub Issues](https://github.com/akshata29/agents/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/akshata29/agents/discussions)
+
+---
+
+**Made with ❤️ using Microsoft Agent Framework and Azure AI Services**

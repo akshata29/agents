@@ -64,8 +64,8 @@ class Settings(BaseSettings):
     # Azure Cosmos DB
     cosmosdb_endpoint: Optional[str] = Field(default=None, alias="COSMOSDB_ENDPOINT")
     cosmosdb_key: Optional[str] = Field(default=None, alias="COSMOSDB_KEY")
-    cosmosdb_database: str = Field(default="finagent", alias="COSMOSDB_DATABASE")
-    cosmosdb_container: str = Field(default="memory", alias="COSMOSDB_CONTAINER")
+    cosmosdb_database: str = Field(default="finagent", alias="COSMOS_DB_DATABASE")
+    cosmosdb_container: str = Field(default="dynamic", alias="COSMOS_DB_CONTAINER")
     
     # Azure Authentication (for managed identity/service principal)
     azure_tenant_id: Optional[str] = Field(default=None, alias="AZURE_TENANT_ID")

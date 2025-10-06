@@ -1,368 +1,408 @@
 # Financial Research Multi-Agent Application
 
-A production-grade multi-agent financial research system built on the Microsoft Agent Framework, combining the agent taxonomy from **finagentsk** with orchestration patterns and UI/UX from the **agents framework** and **deep_research_app** reference.
+> **Production-grade AI-powered financial research system** with dynamic planning, human-in-the-loop approval, and multi-agent orchestration for comprehensive equity analysis.
 
-## Overview
+![Financial Research App](docs/images/homepage_research.png)
 
-This application provides comprehensive equity research capabilities through coordinated AI agents, supporting multiple execution patterns for different research workflows:
+## 🎯 Overview
 
-- **Sequential**: Planner → SEC → Earnings → Fundamentals → Technicals → Report
-- **Concurrent**: Parallel execution with result aggregation
-- **Handoff**: Dynamic agent-to-agent delegation
-- **Group Chat**: Multi-agent collaborative analysis
+A sophisticated financial research platform built on the **Microsoft Agent Framework**, combining the agent taxonomy from **finagentsk** with advanced orchestration patterns. The application provides intelligent equity research through coordinated AI agents, featuring dynamic planning, real-time execution, and comprehensive analysis across multiple financial data sources.
 
-## Architecture
+### Key Highlights
+
+- 🤖 **Dynamic AI Planning** - ReAct-based planner creates optimal execution strategies
+- 👥 **Human-in-the-Loop** - Approve, reject, or modify each step before execution
+- 🔄 **Real-time Progress** - Live updates and step-by-step execution tracking
+- 📊 **Multi-Source Integration** - Yahoo Finance MCP server, FMP API, SEC EDGAR
+- 💾 **Persistent State** - CosmosDB-backed session management and conversation history
+- 📱 **Modern UI** - Clean, responsive interface with comprehensive task visualization
+- 🔌 **MCP Integration** - Model Context Protocol server for Yahoo Finance data
+
+## 📸 Application Screenshots
+
+### Homepage - Research Objective Input
+![Homepage](docs/images/homepage_research.png)
+*Enter your research objective and the system dynamically creates an execution plan*
+
+### Dynamic Research Plan
+![Research Plan](docs/images/researchplan.png)
+*AI-generated execution plan with step dependencies and agent assignments*
+
+### Task Dependencies Visualization
+![Task Dependencies](docs/images/task_dependency.png)
+*Visual representation of step dependencies and execution order*
+
+### Task Execution in Progress
+![Task In Progress](docs/images/task_inprogress.png)
+*Real-time execution status with live progress updates*
+
+### Completed Research with Details
+![Completed Research](docs/images/completed_research.png)
+*View comprehensive results from all executed agents*
+
+### Task Detail View
+![Task Detail](docs/images/completed_task_detail.png)
+*Detailed view of individual task results with formatted output*
+
+### Research History
+![History](docs/images/history.png)
+*Access and review past research sessions*
+
+## 🏗️ Architecture
 
 ```
-finagent_app/
-├── backend/              # FastAPI backend
+finagent_dynamic_app/
+├── backend/                          # FastAPI Backend
 │   ├── app/
-│   │   ├── routers/     # API routes (orchestration, reports, agents)
-│   │   ├── services/    # Core services (orchestrator, planner, reducer)
-│   │   ├── adapters/    # Data source and MCP adapters
-│   │   ├── models/      # Request/response DTOs
-│   │   ├── infra/       # Settings, telemetry
-│   │   ├── agents/      # Financial agent implementations
-│   │   │   ├── company_agent.py      # Company intelligence & market data
-│   │   │   ├── sec_agent.py          # SEC filings analysis
-│   │   │   ├── earnings_agent.py     # Earnings calls analysis
+│   │   ├── main.py                  # FastAPI application entry point
+│   │   ├── agents/                  # Financial agent implementations
+│   │   │   ├── company_agent.py     # Company intelligence & market data (MCP-enabled)
+│   │   │   ├── sec_agent.py         # SEC filings analysis
+│   │   │   ├── earnings_agent.py    # Earnings calls analysis
 │   │   │   ├── fundamentals_agent.py # Financial statements & ratios
-│   │   │   ├── technicals_agent.py   # Technical analysis & charts
-│   │   │   └── report_agent.py       # PDF equity brief generation
-│   │   ├── helpers/     # Utility classes (FMP, Yahoo Finance)
-│   │   └── tools/       # MCP tool wrappers
-│   └── framework_bindings/   # Bindings to agents framework patterns
-├── frontend/            # React + Vite UI
-│   └── src/
-│       ├── components/  # UI components
-│       ├── pages/       # Application pages
-│       ├── hooks/       # React hooks
-│       └── lib/         # Utilities
-├── docs/                # Documentation
-└── scripts/             # Dev and deployment scripts
+│   │   │   ├── technicals_agent.py  # Technical analysis
+│   │   │   ├── summarizer_agent.py  # Multi-agent synthesis
+│   │   │   └── planner_agent.py     # ReAct-based dynamic planner
+│   │   ├── models/
+│   │   │   └── task_models.py       # Plan, Step, Message models
+│   │   ├── persistence/
+│   │   │   ├── memory_store_base.py # Abstract persistence interface
+│   │   │   └── cosmos_memory.py     # CosmosDB implementation
+│   │   ├── services/
+│   │   │   └── task_orchestrator.py # Bridges framework patterns & Cosmos
+│   │   ├── routers/
+│   │   │   └── orchestration.py     # REST API endpoints
+│   │   ├── infra/
+│   │   │   ├── settings.py          # Configuration management
+│   │   │   └── telemetry.py         # Observability service
+│   │   └── helpers/                 # Utility classes (FMP, data formatters)
+│   ├── mcp_servers/                 # Yahoo Finance MCP Server
+│   │   ├── main.py                  # MCP server FastAPI wrapper
+│   │   ├── yahoo_finance_server.py  # MCP server implementation
+│   │   └── Dockerfile               # Container configuration
+│   ├── requirements.txt             # Python dependencies
+│   ├── .env.template                # Environment configuration template
+│   └── start.ps1                    # Backend startup script
+│
+├── frontend/                        # React + TypeScript + Vite Frontend
+│   ├── src/
+│   │   ├── App.tsx                  # Main application component
+│   │   ├── main.tsx                 # React entry point
+│   │   ├── lib/
+│   │   │   └── api.ts               # API client for backend
+│   │   └── components/
+│   │       ├── TaskInput.tsx        # Research objective form
+│   │       ├── PlanView.tsx         # Plan display with steps
+│   │       ├── StepCard.tsx         # Step card with approve/reject
+│   │       ├── ConversationView.tsx # Message timeline
+│   │       └── HistoryView.tsx      # Session history browser
+│   ├── package.json                 # Node dependencies
+│   ├── .env                         # Frontend config
+│   └── tailwind.config.js           # TailwindCSS configuration
+│
+├── docs/                            # Documentation
+│   ├── images/                      # Screenshots
+│   └── QUICKSTART.md               # Quick start guide
+│
+├── scripts/
+│   ├── setup_backend.ps1            # Backend setup automation
+│   ├── setup_frontend.ps1           # Frontend setup automation
+│   └── dev.ps1                      # Development startup script
+│
+├── deploy.ps1                       # Azure deployment script (Web App + Container Apps)
+├── deploy_mcp.ps1                   # MCP server deployment
+├── Dockerfile                       # Multi-stage Docker build
+└── README.md                        # This file
 ```
 
-## Agents
+## 🤖 AI Agents
 
-### Company Agent
-- Company profile, metrics, news
-- Stock quotes and historical data
-- Analyst recommendations
-- Market sentiment
+### Company Agent 🏢
+**MCP-Enabled** - Connects to Yahoo Finance MCP Server for real-time data
 
-### SEC Agent
-- 10-K/10-Q analysis
-- Business highlights extraction
-- Risk assessment
-- Financial statement analysis
-- Equity report generation
+- **Capabilities**:
+  - Company profile and business description
+  - Real-time stock quotes and historical prices
+  - Latest company news and market sentiment
+  - Analyst recommendations and price targets
+  - Key financial metrics (Market Cap, P/E, Beta, etc.)
+  
+- **Tools** (via MCP):
+  - `get_stock_info` - Company fundamentals
+  - `get_historical_stock_prices` - Price history
+  - `get_yahoo_finance_news` - Latest news
+  - `get_recommendations` - Analyst ratings
 
-### Earnings Agent
-- Transcript retrieval and summarization
-- Positive/negative outlook extraction
-- Growth opportunities identification
-- Guidance credibility assessment
+- **Fallback**: If MCP unavailable, uses Azure OpenAI for general analysis
 
-### Fundamentals Agent
-- Financial statement analysis (3-5 years)
-- Key ratio computation (ROE, ROA, margins, etc.)
-- Altman Z-Score (bankruptcy risk)
-- Piotroski F-Score (financial strength)
-- Trend analysis
+### SEC Agent 📄
+Regulatory filings analysis specialist
 
-### Technicals Agent
-- Technical indicators (EMA, RSI, MACD, Bollinger Bands)
-- Candlestick pattern detection
-- Support/resistance levels
-- Overall technical rating
+- **Capabilities**:
+  - 10-K/10-Q filing analysis
+  - Business highlights extraction
+  - Risk factor assessment
+  - Management discussion & analysis (MD&A)
+  - Financial statement parsing
 
-### Report Agent
-- Synthesizes all agent analyses
-- Generates 1-3 page PDF equity brief
-- Investment thesis and key risks
-- Valuation snapshot and recommendation
+- **Data Sources**:
+  - FMP API for SEC filings
+  - SEC EDGAR direct access
 
-## Orchestration Patterns
+### Earnings Agent 📞
+Earnings call transcripts analyst
 
-### 1. Sequential
-Agents execute in order, each building on previous context.
+- **Capabilities**:
+  - Transcript retrieval and summarization
+  - Positive/negative outlook extraction
+  - Management guidance analysis
+  - Growth opportunities identification
+  - Guidance credibility assessment
 
-**API**: `POST /orchestration/sequential`
-```json
-{
-  "ticker": "MSFT",
-  "scope": ["sec", "earnings", "fundamentals", "technicals"],
-  "depth": "deep",
-  "includePdf": true
-}
-```
+### Fundamentals Agent 💰
+Financial statement analysis expert
 
-### 2. Concurrent
-Agents run in parallel, results are merged by Reducer agent.
+- **Capabilities**:
+  - Multi-year financial statement analysis (3-5 years)
+  - Key ratio computation (ROE, ROA, Profit Margins, etc.)
+  - Altman Z-Score (bankruptcy risk prediction)
+  - Piotroski F-Score (financial strength assessment)
+  - Revenue and earnings trend analysis
 
-**API**: `POST /orchestration/concurrent`
-```json
-{
-  "ticker": "MSFT",
-  "modules": ["sec", "earnings", "fundamentals", "technicals"],
-  "aggregationStrategy": "merge"
-}
-```
+### Technicals Agent 📈
+Technical analysis and charting specialist
 
-### 3. Handoff
-Agents dynamically delegate to specialists based on context.
+- **Capabilities**:
+  - Technical indicators (EMA, RSI, MACD, Bollinger Bands)
+  - Candlestick pattern detection
+  - Support and resistance level identification
+  - Overall technical rating (Buy/Sell/Hold)
 
-**API**: `POST /orchestration/handoff`
-```json
-{
-  "ticker": "MSFT",
-  "initialAgent": "company",
-  "question": "Assess risk factors",
-  "maxHandoffs": 10
-}
-```
+### Summarizer Agent 📝
+Multi-agent synthesis specialist
 
-### 4. Group Chat
-Multi-agent debate for hypothesis testing and consensus.
+- **Capabilities**:
+  - Synthesizes results from all agents
+  - Generates investment thesis
+  - Identifies key risks and opportunities
+  - Creates actionable recommendations
+  - Sentiment-aware summary generation
 
-**API**: `POST /orchestration/groupchat`
-```json
-{
-  "ticker": "MSFT",
-  "question": "Is the current valuation justified?",
-  "maxTurns": 40,
-  "requireConsensus": true
-}
-```
+### Planner Agent (Dynamic Planning) 🧠
+**ReAct Pattern Implementation**
 
-## Data Sources
+- **Capabilities**:
+  - Analyzes research objectives
+  - Determines optimal agent sequence
+  - Identifies task dependencies
+  - Creates step-by-step execution plan
+  - Adapts plan based on available tools
 
-- **Yahoo Finance**: Real-time quotes, historical data
-- **Financial Modeling Prep (FMP)**: Company financials, SEC filings
-- **SEC EDGAR**: Regulatory filings (10-K, 10-Q, 8-K)
-- **Azure Storage**: PDF report persistence
-- **Azure Cosmos DB**: Session state management
+- **Planning Algorithm**:
+  1. Parse user objective
+  2. Identify required data points
+  3. Match capabilities to agents
+  4. Determine execution order
+  5. Define dependencies
+  6. Generate executable plan
 
-## Tech Stack
+## ✨ Key Features
 
-### Backend
-- **FastAPI**: API framework
-- **Microsoft Agent Framework**: Agent orchestration
-- **Azure OpenAI**: GPT-4o for agent intelligence
-- **OpenTelemetry**: Observability and tracing
-- **Pydantic**: Data validation
-- **Structlog**: Structured logging
+### 1. Dynamic Planning with ReAct Pattern
+- **Intelligent Planning**: AI analyzes your research objective and automatically creates an optimal execution plan
+- **Step Dependencies**: Automatically identifies which steps depend on others
+- **Agent Selection**: Matches the right agent to each task based on capabilities
+- **Function Mapping**: Maps specific functions to agents (e.g., `get_yahoo_finance_news` → Company Agent)
 
-### Frontend
-- **React 18**: UI framework
-- **Vite**: Build tool
-- **TanStack Query**: Data fetching
-- **TailwindCSS**: Styling
-- **Lucide Icons**: Icon library
-- **WebSocket**: Real-time updates
+### 2. Human-in-the-Loop Approval
+- **Step-by-Step Approval**: Review and approve each step before execution
+- **Reject & Modify**: Reject steps you don't want executed
+- **Full Control**: Complete transparency and control over the research process
+- **Plan Visibility**: See the entire plan before any execution begins
 
-## Setup
+### 3. Real-Time Execution Tracking
+- **Live Progress Updates**: Watch agents work in real-time
+- **Status Indicators**: Visual status for each step (Pending, Executing, Completed, Failed, Rejected)
+- **Detailed Logs**: View what each agent is doing as it works
+- **Error Handling**: Clear error messages and recovery options
+
+### 4. Yahoo Finance MCP Integration
+- **Model Context Protocol**: Industry-standard protocol for tool integration
+- **Real-Time Data**: Live stock quotes, news, and financial metrics
+- **Containerized Deployment**: MCP server runs in Azure Container Apps
+- **Fallback Mechanism**: Graceful degradation if MCP server unavailable
+
+### 5. Persistent State Management
+- **CosmosDB Backend**: All plans, steps, and messages stored in Cosmos DB
+- **Session Continuity**: Resume research sessions across browser refreshes
+- **History Access**: View and rerun past research sessions
+- **Conversation Threading**: Complete message history for each session
+
+### 6. Multi-Source Data Integration
+- **Yahoo Finance (MCP)**: Real-time quotes, news, historical data
+- **Financial Modeling Prep (FMP)**: Company financials, SEC filings, earnings
+- **SEC EDGAR**: Direct regulatory filing access
+- **Azure OpenAI**: GPT-4o for intelligent analysis and synthesis
+
+### 7. Modern, Responsive UI
+- **Clean Interface**: Intuitive design focused on research workflow
+- **Task Cards**: Visual representation of steps with status indicators
+- **Dependency Graph**: See how steps relate to each other
+- **Mobile Responsive**: Works on desktop, tablet, and mobile devices
+- **Dark/Light Mode Ready**: Theme-aware components
+
+## 🚀 Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Azure OpenAI account
-- FMP API key (for financial data)
 
-### Backend Setup
+- **Python 3.11+**
+- **Node.js 18+**
+- **Azure OpenAI** account with GPT-4o deployment
+- **Financial Modeling Prep (FMP)** API key ([Get Free Key](https://financialmodelingprep.com/))
+- **Azure Cosmos DB** account (for state management)
+- **(Optional)** Azure Container Apps for MCP server deployment
 
-1. **Create virtual environment**:
-   ```powershell
-   cd backend
-   python -m venv venv
-   .\venv\Scripts\Activate.ps1
-   ```
+### Quick Start
 
-2. **Install dependencies**:
-   ```powershell
-   pip install -r requirements.txt
-   ```
+#### 1. Backend Setup
 
-3. **Configure environment**:
-   ```powershell
-   cp .env.template .env
-   # Edit .env with your API keys and configuration
-   ```
+```powershell
+cd finagent_dynamic_app\backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-4. **Run backend**:
-   ```powershell
-   python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   ```
+Create `.env` file from template:
+```powershell
+cp .env.template .env
+```
 
-### Frontend Setup
-
-1. **Install dependencies**:
-   ```powershell
-   cd frontend
-   npm install
-   ```
-
-2. **Run development server**:
-   ```powershell
-   npm run dev
-   ```
-
-3. **Access UI**:
-   ```
-   http://localhost:5173
-   ```
-
-## Environment Variables
-
-See `.env.template` for all configuration options. Key variables:
-
+Edit `.env` with your configuration:
 ```env
 # Azure OpenAI
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
-AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_API_KEY=your-api-key-here
 AZURE_OPENAI_DEPLOYMENT=gpt-4o
 
 # Financial Data
-FMP_API_KEY=your-fmp-key
+FMP_API_KEY=your-fmp-api-key
 YAHOO_FINANCE_ENABLED=true
+YAHOO_FINANCE_MCP_URL=http://localhost:8001/sse  # Local development
 
-# Storage
-AZURE_STORAGE_CONNECTION_STRING=your-connection-string
+# CosmosDB
 COSMOS_DB_ENDPOINT=https://your-cosmos.documents.azure.com:443/
+COSMOS_DB_KEY=your-cosmos-key
+COSMOS_DB_DATABASE=finagent
+COSMOS_DB_CONTAINER=sessions
 ```
 
-## API Endpoints
-
-### Orchestration
-- `POST /orchestration/sequential` - Run sequential workflow
-- `POST /orchestration/concurrent` - Run concurrent workflow
-- `POST /orchestration/handoff` - Run handoff workflow
-- `POST /orchestration/groupchat` - Run group chat workflow
-- `GET /orchestration/runs/{run_id}` - Get run status
-- `DELETE /orchestration/runs/{run_id}` - Cancel run
-
-### Reports
-- `GET /reports` - List generated reports
-- `GET /reports/{report_id}` - Get specific report
-- `GET /reports/{report_id}/pdf` - Download PDF
-
-### Agents
-- `GET /agents` - List available agents
-- `GET /agents/{agent_id}/health` - Agent health status
-
-### System
-- `GET /health` - System health check
-- `GET /status` - Detailed system status
-
-## UI Features
-
-### Left Pane: Research Control
-- Ticker input and scope selection
-- Pattern selector (Sequential/Concurrent/Handoff/Group)
-- Depth configuration (Standard/Deep/Comprehensive)
-- Run history and saved reports
-
-### Center Pane: Conversation Timeline
-- Agent messages with avatars
-- Collapsible tool calls
-- Artifact previews
-- Pattern-specific badges
-- Real-time streaming updates
-
-### Right Pane: Insights Drawer
-Tabs:
-- **Dossier**: Company profile and metrics
-- **SEC**: Filing highlights and risks
-- **Earnings**: Call insights and outlook
-- **Fundamentals**: Ratios and scores
-- **Technicals**: Charts and signals
-- **Report**: PDF equity brief
-
-## Development
-
-### Run Both Services
+Run backend:
 ```powershell
-# Terminal 1 - Backend
-cd backend
-.\venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --reload
+.\start.ps1
+```
+Backend will be available at `http://localhost:8000`
 
-# Terminal 2 - Frontend
-cd frontend
+#### 2. MCP Server Setup (Optional but Recommended)
+
+In a separate terminal:
+```powershell
+cd finagent_dynamic_app\backend\mcp_servers
+python start_server.py
+```
+MCP server will be available at `http://localhost:8001/sse`
+
+#### 3. Frontend Setup
+
+```powershell
+cd finagent_dynamic_app\frontend
+npm install
 npm run dev
 ```
+Frontend will be available at `http://localhost:5173`
 
-### Seed Example Data
+## 🐳 Deployment
+
+### Deploy to Azure (Automated)
+
+The application can be deployed to Azure with a single script:
+
 ```powershell
-cd scripts
-python seed_examples.py
+.\deploy.ps1 `
+  -ResourceGroup "your-rg-name" `
+  -AcrName "yourregistry" `
+  -AppServicePlanName "your-plan" `
+  -WebAppName "your-webapp" `
+  -McpContainerAppName "yahoo-finance-mcp" `
+  -McpEnvironmentName "finagent-mcp-env" `
+  -Location "eastus"
 ```
 
-### Run Tests
-```powershell
-# Backend tests
-cd backend
-pytest
+This will:
+1. ✅ Deploy Yahoo Finance MCP Server to Azure Container Apps
+2. ✅ Build and push Docker image to Azure Container Registry
+3. ✅ Deploy Web App (backend + frontend) to Azure App Service
+4. ✅ Configure all environment variables automatically
+5. ✅ Set up HTTPS endpoints
 
-# Frontend tests
-cd frontend
-npm test
-```
+### Environment Variables (Production)
 
-## Deployment
+The deployment script automatically configures:
+- `YAHOO_FINANCE_MCP_URL` - Points to Container App HTTPS endpoint + /sse
+- `YAHOO_FINANCE_ENABLED` - Set to `true`
+- `MCP_SERVER_URL` - Same as YAHOO_FINANCE_MCP_URL
+- All Azure service endpoints and keys from `.env` file
 
-See `docs/DEPLOYMENT.md` for production deployment guide covering:
-- Azure App Service deployment
-- Container deployment
-- Environment configuration
-- Monitoring and alerts
-- Cost optimization
+## 🛠️ Tech Stack
 
-## Observability
+### Backend
+- **FastAPI** - Modern Python web framework
+- **Microsoft Agent Framework** - Agent orchestration and patterns
+- **Azure OpenAI** - GPT-4o for intelligence
+- **MCP Python SDK** - Model Context Protocol client
+- **Pydantic** - Data validation
+- **Structlog** - Structured logging
+- **Azure Cosmos DB** - NoSQL database for state
+- **httpx** - Async HTTP client
 
-The application integrates with Azure Application Insights for:
-- Request/response tracing
-- Agent execution metrics
-- Error tracking and alerts
-- Performance monitoring
-- Custom telemetry events
+### Frontend
+- **React 18** - UI framework
+- **TypeScript** - Type safety
+- **Vite** - Build tool and dev server
+- **TailwindCSS** - Utility-first styling
+- **Lucide React** - Icon library
+- **Axios** - HTTP client
 
-## Security
+### MCP Server
+- **FastAPI** - HTTP/SSE transport
+- **MCP SDK** - Model Context Protocol implementation
+- **yfinance** - Yahoo Finance data library
+- **Uvicorn** - ASGI server
 
-- API key rotation support
-- Azure Managed Identity integration
-- CORS configuration
-- Rate limiting (coming soon)
-- Input validation and sanitization
+### Infrastructure
+- **Azure Container Apps** - MCP server hosting
+- **Azure App Service** - Web app hosting
+- **Azure Container Registry** - Docker image storage
+- **Azure Cosmos DB** - State persistence
+- **Azure Application Insights** - Monitoring (optional)
 
-## Roadmap
+## 📝 License
 
-- [ ] PDF export with custom templates
-- [ ] Multi-ticker portfolio analysis
-- [ ] Custom agent creation UI
-- [ ] Scheduled research runs
-- [ ] Email/Slack notifications
-- [ ] Advanced charting and visualizations
-- [ ] Backtesting capabilities
-- [ ] Integration with trading platforms
+MIT License - See LICENSE file for details
 
-## License
+## 🙏 Acknowledgments
 
-MIT License - See LICENSE file
+Built with:
+- [Microsoft Agent Framework](https://github.com/microsoft/agent-framework)
+- [finagentsk](https://github.com/akshata29/finagentsk) - Agent taxonomy
+- [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
 
-## Contributing
+## 📞 Support
 
-Contributions welcome! Please read CONTRIBUTING.md for guidelines.
-
-## Support
-
-- Documentation: `/docs`
-- Issues: GitHub Issues
-- Discussions: GitHub Discussions
+- **Documentation**: See `/docs` folder
+- **Issues**: [GitHub Issues](https://github.com/akshata29/agents/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/akshata29/agents/discussions)
 
 ---
 
-**Built with**:
-- [Microsoft Agent Framework](https://github.com/microsoft/agent-framework)
-- [finagentsk](https://github.com/akshata29/finagentsk)
-- [agents framework](https://github.com/akshata29/agents)
+**Made with ❤️ using Microsoft Agent Framework**

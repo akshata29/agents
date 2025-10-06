@@ -360,10 +360,14 @@ Write-Host ""
 
 # Add MCP configuration (overrides .env if present)
 if ($mcpServerUrl) {
-    # Remove existing MCP_SERVER_URL if loaded from .env
-    $envVars = $envVars | Where-Object { $_ -notmatch '^MCP_SERVER_URL=' }
+    # Remove existing MCP_SERVER_URL and YAHOO_FINANCE_MCP_URL if loaded from .env
+    $envVars = $envVars | Where-Object { $_ -notmatch '^MCP_SERVER_URL=' -and $_ -notmatch '^YAHOO_FINANCE_MCP_URL=' -and $_ -notmatch '^YAHOO_FINANCE_ENABLED=' }
     $envVars += "MCP_SERVER_URL=$mcpServerUrl"
+    $envVars += "YAHOO_FINANCE_MCP_URL=$mcpServerUrl"
+    $envVars += "YAHOO_FINANCE_ENABLED=true"
     Write-Host "✓ MCP_SERVER_URL configured: $mcpServerUrl" -ForegroundColor Green
+    Write-Host "✓ YAHOO_FINANCE_MCP_URL configured: $mcpServerUrl" -ForegroundColor Green
+    Write-Host "✓ YAHOO_FINANCE_ENABLED set to true" -ForegroundColor Green
 }
 
 if ($McpApiKey) {
@@ -410,6 +414,11 @@ Write-Host ""
 Write-Host "📦 Deployed Components:" -ForegroundColor Cyan
 Write-Host "  • MCP Server:      $mcpServerUrl" -ForegroundColor White
 Write-Host "  • Web Application: $webAppUrl" -ForegroundColor White
+Write-Host ""
+Write-Host "🔧 Environment Variables Configured:" -ForegroundColor Cyan
+Write-Host "  • YAHOO_FINANCE_MCP_URL: $mcpServerUrl" -ForegroundColor White
+Write-Host "  • YAHOO_FINANCE_ENABLED: true" -ForegroundColor White
+Write-Host "  • MCP_SERVER_URL: $mcpServerUrl" -ForegroundColor White
 Write-Host ""
 Write-Host "🔧 Next Steps:" -ForegroundColor Yellow
 Write-Host "  1. Configure authentication (Azure AD) in Azure Portal" -ForegroundColor White

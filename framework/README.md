@@ -1,4 +1,4 @@
-# Magentic Foundation Framework
+# Foundational Framework
 
 An enterprise-grade multi-agent foundational framework built on top of **Microsoft Agent Framework**, designed to provide robust, multi-modal orchestration capabilities for building advanced AI applications.
 
@@ -9,7 +9,7 @@ An enterprise-grade multi-agent foundational framework built on top of **Microso
 
 ## 🏗️ Architecture Overview
 
-The Magentic Foundation Framework is designed as a comprehensive foundation for building sophisticated multi-agent applications with:
+The Foundation Framework is designed as a comprehensive foundation for building sophisticated multi-agent applications with:
 
 - **Multi-Agent Orchestration**: Support for complex agent collaboration patterns
 - **Three Workflow Paradigms**: YAML declarative, code-based, and MAF graph-based

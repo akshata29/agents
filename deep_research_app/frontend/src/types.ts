@@ -5,6 +5,7 @@ export interface ResearchRequest {
   max_sources: number;
   include_citations: boolean;
   execution_mode: 'workflow' | 'code' | 'maf-workflow';
+  session_id?: string; // Optional session ID to use existing session
 }
 
 export interface ResearchResponse {

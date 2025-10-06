@@ -222,26 +222,34 @@ class CosmosMemoryStore(MemoryStoreBase):
         """Update an existing session."""
         await self._update_item(session)
     
-    async def get_all_sessions(self, limit: int = 50) -> List[Session]:
-        """Retrieve all sessions for the current user (most recent first)."""
+    async def get_all_sessions(self, limit: int = 50, user_id: Optional[str] = None) -> List[Session]:
+        """
+        Retrieve all sessions for a user (most recent first).
+        
+        Args:
+            limit: Maximum number of sessions to return
+            user_id: User ID to filter sessions (overrides self.user_id if provided)
+        """
         query_parts = ["SELECT * FROM c WHERE c.data_type='session'"]
         parameters = []
         
-        # Add user_id filter if available for multi-user isolation
-        if self.user_id:
+        # Use provided user_id or fall back to instance user_id for multi-user isolation
+        effective_user_id = user_id or self.user_id
+        
+        if effective_user_id:
             query_parts.append("AND c.user_id=@user_id")
-            parameters.append({"name": "@user_id", "value": self.user_id})
+            parameters.append({"name": "@user_id", "value": effective_user_id})
         
         query_parts.append(f"ORDER BY c.created_at DESC OFFSET 0 LIMIT {limit}")
         query = " ".join(query_parts)
         
-        # Need to enable cross-partition query since we're not filtering by session_id
+        # Note: Not specifying partition_key allows cross-partition queries by default in async SDK
         await self.ensure_initialized()
         try:
             items = []
             query_iter = self._container.query_items(
                 query=query,
-                parameters=parameters,
+                parameters=parameters
             )
             
             async for item in query_iter:

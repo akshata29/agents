@@ -10,12 +10,12 @@ import os
 import sys
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncIterable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -58,6 +58,9 @@ from tavily import TavilyClient
 
 # Import MAF workflow module
 from . import maf_workflow
+
+# Import routers
+from app.routers import sessions
 
 logger = structlog.get_logger(__name__)
 
@@ -504,9 +507,30 @@ async def execute_research_programmatically(
             pattern=planning_pattern
         )
         
-        research_plan = planning_context.result.get("responses", [{}])[0].get("content", "") if planning_context.result else ""
-        results["research_plan"] = research_plan
+        # Extract research plan with better error handling
+        research_plan = ""
+        if planning_context and planning_context.result:
+            logger.info(f"Planning context result structure: {planning_context.result.keys() if isinstance(planning_context.result, dict) else type(planning_context.result)}")
+            
+            # Try summary field first (it contains the complete response)
+            if "summary" in planning_context.result:
+                research_plan = planning_context.result.get("summary", "")
+            # Try results list (contains agent responses)
+            elif "results" in planning_context.result:
+                responses = planning_context.result.get("results", [])
+                if responses and len(responses) > 0:
+                    # Results is a list of dicts with 'agent' and 'content' keys
+                    research_plan = responses[0].get("content", "")
+            # Try direct content field
+            elif "content" in planning_context.result:
+                research_plan = planning_context.result.get("content", "")
+            
+            if not research_plan:
+                logger.warning(f"⚠️ No research plan content found. Full result keys: {planning_context.result.keys()}")
+        else:
+            logger.warning(f"⚠️ Planning context or result is None")
         
+        results["research_plan"] = research_plan
         logger.info("sequential_task_completed", phase=1, task="planning", result_length=len(str(research_plan)))
         
         # Update progress: Phase 1 complete
@@ -524,11 +548,11 @@ async def execute_research_programmatically(
         # Each execution uses ConcurrentBuilder with 2 researcher agents for redundancy/quality
         
         research_aspects = [
-            ("core_concepts", f"Research the core concepts and fundamental definitions related to: {topic}. Focus on authoritative sources and foundational understanding. Context: {research_plan}"),
-            ("current_state", f"Investigate the current state, recent developments, and latest trends regarding: {topic}. Focus on recent publications from the last 2-3 years. Context: {research_plan}"),
-            ("applications", f"Research practical applications, use cases, and real-world implementations of: {topic}. Include examples and case studies. Context: {research_plan}"),
-            ("challenges", f"Investigate the challenges, limitations, criticisms, and potential risks associated with: {topic}. Include counterarguments. Context: {research_plan}"),
-            ("future_trends", f"Research future trends, predictions, and emerging directions for: {topic}. Focus on expert opinions and forecasts. Context: {research_plan}")
+            ("core_concepts", f"Research the core concepts and fundamental definitions related to: {topic}. Focus on authoritative sources and foundational understanding."),
+            ("current_state", f"Investigate the current state, recent developments, and latest trends regarding: {topic}. Focus on recent publications from the last 2-3 years."),
+            ("applications", f"Research practical applications, use cases, and real-world implementations of: {topic}. Include examples and case studies."),
+            ("challenges", f"Investigate the challenges, limitations, criticisms, and potential risks associated with: {topic}. Include counterarguments."),
+            ("future_trends", f"Research future trends, predictions, and emerging directions for: {topic}. Focus on expert opinions and forecasts.")
         ]
         
         # Execute all research tasks concurrently using asyncio.gather
@@ -620,17 +644,47 @@ Instructions: Process this research through synthesis, validation, finalization,
             pattern=final_phases_pattern
         )
         
-        # Extract results from sequential execution
-        if final_context.result and "results" in final_context.result:
-            responses = final_context.result["results"]
-            if len(responses) >= 3:
-                results["draft_report"] = responses[0].get("content", "")  # Writer 
-                results["validation_results"] = responses[1].get("content", "")  # Reviewer
-                results["executive_summary"] = responses[2].get("content", "")  # Summarizer
-                # Set final_report to the writer's output since we removed the duplicate
-                results["final_report"] = responses[0].get("content", "")
+        # Extract results from sequential execution with better error handling
+        if final_context and final_context.result:
+            logger.info(f"Final context result structure: {final_context.result.keys() if isinstance(final_context.result, dict) else type(final_context.result)}")
+            
+            # Check if we have a summary field (contains the final synthesized output)
+            if "summary" in final_context.result:
+                # The summary contains the final output from all agents
+                final_summary = final_context.result.get("summary", "")
+                results["draft_report"] = final_summary
+                results["final_report"] = final_summary
+                results["executive_summary"] = final_summary
+                logger.info("Using summary field for final phases", summary_length=len(final_summary))
+            
+            # Also check for individual results
+            if "results" in final_context.result:
+                responses = final_context.result["results"]
+                logger.info(f"Got {len(responses)} responses from final phases")
                 
-                logger.info("sequential_phases_completed", phases=[3, 4, 5])
+                # Extract individual agent responses if available
+                if len(responses) >= 1:
+                    writer_output = responses[0].get("content", "")
+                    if writer_output:
+                        results["draft_report"] = writer_output
+                        results["final_report"] = writer_output
+                if len(responses) >= 2:
+                    reviewer_output = responses[1].get("content", "")
+                    if reviewer_output:
+                        results["validation_results"] = reviewer_output
+                if len(responses) >= 3:
+                    summarizer_output = responses[2].get("content", "")
+                    if summarizer_output:
+                        results["executive_summary"] = summarizer_output
+                
+                logger.info("sequential_phases_completed", phases=[3, 4, 5], 
+                           draft_length=len(results.get("draft_report", "")),
+                           validation_length=len(results.get("validation_results", "")),
+                           summary_length=len(results.get("executive_summary", "")))
+            else:
+                logger.warning(f"⚠️ No 'results' key in final_context.result. Keys: {final_context.result.keys()}")
+        else:
+            logger.warning(f"⚠️ Final context or result is None")
         
         # Update progress: All phases complete
         if execution_id in active_executions:
@@ -684,6 +738,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Loading workflow from {workflow_path}")
     await workflow_engine.register_workflow(str(workflow_path))
     
+    # Initialize Cosmos DB connection for session persistence
+    try:
+        from app.persistence.cosmos_memory import get_cosmos_store
+        cosmos = get_cosmos_store()
+        await cosmos.initialize()
+        logger.info("Cosmos DB connection initialized for session persistence")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Cosmos DB: {e}. Session persistence will not be available.")
+    
     logger.info("Deep Research Backend API started successfully")
     
     yield
@@ -701,13 +764,19 @@ app = FastAPI(
 )
 
 # Configure CORS
+cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+cors_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register routers
+app.include_router(sessions.router)
 
 
 # Request/Response Models
@@ -721,6 +790,7 @@ class ResearchRequest(BaseModel):
         default="workflow", 
         description="Execution mode: workflow (declarative YAML), code (programmatic patterns), or maf-workflow (MAF graph-based)"
     )
+    session_id: Optional[str] = Field(default=None, description="Optional session ID to use existing session")
 
 
 class ResearchResponse(BaseModel):
@@ -764,9 +834,9 @@ class WorkflowInfoResponse(BaseModel):
 
 # API Endpoints
 
-@app.get("/")
+@app.get("/api")
 async def root():
-    """Root endpoint."""
+    """Root API endpoint - returns API information."""
     return {
         "service": "Deep Research API",
         "version": "1.0.0",
@@ -840,14 +910,83 @@ async def get_workflow_info():
 
 
 @app.post("/api/research/start", response_model=ResearchResponse)
-async def start_research(request: ResearchRequest, background_tasks: BackgroundTasks):
+async def start_research(request: ResearchRequest, req: Request, background_tasks: BackgroundTasks):
     """Start a new research workflow execution."""
     if not workflow_engine or not agent_registry:
         raise HTTPException(status_code=503, detail="Services not initialized")
     
     try:
+        # Extract authenticated user (for session tracking)
+        from app.auth.auth_utils import get_authenticated_user_details
+        user_details = get_authenticated_user_details(req.headers)
+        user_id = user_details.get("user_principal_id", "dev-user@localhost")
+        
         # Generate execution ID
         execution_id = str(uuid.uuid4())
+        
+        # Ensure session exists in Cosmos DB (create if doesn't exist)
+        session_id = request.session_id
+        run_id = None
+        try:
+            from app.persistence.cosmos_memory import get_cosmos_store
+            from app.models.persistence_models import ResearchSession, ResearchRun
+            from datetime import timezone
+            
+            cosmos = get_cosmos_store()
+            await cosmos.initialize()
+            
+            # Ensure session exists
+            if session_id:
+                existing_session = await cosmos.get_session(session_id)
+                if not existing_session:
+                    # Create new session with provided session_id
+                    new_session = ResearchSession(
+                        session_id=session_id,
+                        user_id=user_id
+                    )
+                    await cosmos.create_session(new_session)
+                    logger.info("Created new session in Cosmos DB", session_id=session_id, user_id=user_id)
+                else:
+                    # Update last_active
+                    await cosmos.update_session(session_id, {"last_active": datetime.now(timezone.utc)})
+                    logger.info("Using existing session", session_id=session_id, user_id=user_id)
+            else:
+                # No session_id provided, create new one
+                new_session = ResearchSession(
+                    session_id=f"session-{int(datetime.now(timezone.utc).timestamp() * 1000)}",
+                    user_id=user_id
+                )
+                await cosmos.create_session(new_session)
+                session_id = new_session.session_id
+                logger.info("Created new session (no ID provided)", session_id=session_id, user_id=user_id)
+            
+            # Create research run in the session
+            run = ResearchRun(
+                run_id=execution_id,  # Use execution_id as run_id
+                session_id=session_id,
+                user_id=user_id,
+                topic=request.topic,
+                depth=request.depth,
+                max_sources=request.max_sources,
+                include_citations=request.include_citations,
+                execution_mode=request.execution_mode,
+                status="pending"
+            )
+            
+            logger.info(f"Creating ResearchRun in Cosmos DB: run_id={run.run_id}, session_id={session_id}, topic={request.topic}")
+            
+            await cosmos.create_run(run)
+            run_id = run.run_id
+            
+            logger.info(
+                "✅ CREATED ResearchRun in Cosmos DB",
+                session_id=session_id,
+                run_id=run_id,
+                user_id=user_id,
+                topic=request.topic
+            )
+        except Exception as e:
+            logger.error(f"❌ FAILED to persist to Cosmos DB: {e}. Continuing without persistence.", exc_info=True)
         
         # Determine workflow engine and pattern based on execution mode
         if request.execution_mode == "maf-workflow":
@@ -893,6 +1032,8 @@ async def start_research(request: ResearchRequest, background_tasks: BackgroundT
             "current_task": "Initializing..." if request.execution_mode in ["code", "maf-workflow"] else None,
             "completed_tasks": [],
             "failed_tasks": [],
+            "session_id": session_id,  # For Cosmos DB persistence
+            "run_id": run_id,  # For Cosmos DB persistence
             "metadata": {
                 "execution_mode": request.execution_mode,
                 "orchestration_pattern": orchestration_pattern,
@@ -971,10 +1112,10 @@ async def start_research(request: ResearchRequest, background_tasks: BackgroundT
 @app.get("/api/research/status/{execution_id}", response_model=ExecutionStatusResponse)
 async def get_execution_status(execution_id: str):
     """Get the status of a research execution (workflow or code-based)."""
-    if execution_id not in active_executions:
-        raise HTTPException(status_code=404, detail=f"Execution {execution_id} not found")
     
-    try:
+    # Check if execution is active (in-memory)
+    if execution_id in active_executions:
+        # Active execution - get from memory
         exec_info = active_executions[execution_id]
         execution_mode = exec_info.get("request", {}).get("execution_mode", "workflow")
         
@@ -983,7 +1124,8 @@ async def get_execution_status(execution_id: str):
             status = exec_info.get("status", "running")
             start_time = exec_info.get("start_time")
             end_time = exec_info.get("end_time")
-            results = exec_info.get("result")  # Fixed: "result" not "results"
+            # Check both "results" (code-based) and "result" (maf-workflow) for compatibility
+            results = exec_info.get("results") or exec_info.get("result")
             error = exec_info.get("error")
             
             # Get progress information updated during execution
@@ -1098,45 +1240,182 @@ async def get_execution_status(execution_id: str):
                 error=error,
                 metadata=metadata
             )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting execution status", execution_id=execution_id, error=str(e))
-        raise HTTPException(status_code=500, detail=f"Error retrieving execution status: {str(e)}")
+    else:
+        # Historical execution - load from Cosmos DB
+        try:
+            logger.info("Loading historical execution from Cosmos DB", execution_id=execution_id)
+            
+            # Get cosmos store instance
+            from app.persistence.cosmos_memory import get_cosmos_store
+            cosmos = get_cosmos_store()
+            await cosmos.initialize()
+            
+            # Get the run from Cosmos DB using execution_id as run_id
+            run = await cosmos.get_run(execution_id)
+            
+            if not run:
+                raise HTTPException(status_code=404, detail=f"Execution {execution_id} not found in history")
+            
+            # Build execution status from stored run data
+            status = run.status
+            progress = run.progress
+            current_task = run.current_task
+            completed_tasks = run.completed_tasks if run.completed_tasks else []
+            failed_tasks = run.failed_tasks if run.failed_tasks else []
+            
+            # Time information
+            start_time = run.started_at.isoformat() if run.started_at else None
+            end_time = run.completed_at.isoformat() if run.completed_at else None
+            duration = run.execution_time
+            
+            # Build result from stored data
+            result = None
+            if status == "completed" and run.metadata:
+                # Reconstruct result from metadata
+                result = {
+                    "research_plan": run.metadata.get("research_plan", ""),
+                    "core_concepts": run.metadata.get("core_concepts", ""),
+                    "current_state": run.metadata.get("current_state", ""),
+                    "applications": run.metadata.get("applications", ""),
+                    "challenges": run.metadata.get("challenges", ""),
+                    "future_trends": run.metadata.get("future_trends", ""),
+                    "final_report": run.research_report or "",
+                    "executive_summary": run.summary or ""
+                }
+            
+            # Get error if failed
+            error = run.error_message
+            
+            # Metadata
+            metadata = run.metadata if run.metadata else {}
+            
+            logger.info("Loaded historical execution", execution_id=execution_id, status=status, progress=progress)
+            
+            return ExecutionStatusResponse(
+                execution_id=execution_id,
+                status=status,
+                progress=progress,
+                current_task=current_task,
+                completed_tasks=completed_tasks,
+                failed_tasks=failed_tasks,
+                start_time=start_time,
+                end_time=end_time,
+                duration=duration,
+                result=result,
+                error=error,
+                metadata=metadata
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("Error loading historical execution", execution_id=execution_id, error=str(e))
+            raise HTTPException(status_code=500, detail=f"Error loading execution from history: {str(e)}")
+
 
 
 @app.get("/api/research/list")
-async def list_executions():
-    """List all research executions."""
-    if not workflow_engine:
-        raise HTTPException(status_code=503, detail="Workflow engine not initialized")
+async def list_executions(request: Request):
+    """List all research executions (active and recent from Cosmos DB) for the authenticated user."""
+    # Extract authenticated user
+    from app.auth.auth_utils import get_authenticated_user_details
+    user_details = get_authenticated_user_details(request.headers)
+    user_id = user_details.get("user_principal_id")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User authentication required")
     
     executions = []
+    
+    # Get active executions (in-memory) for this user
     for exec_id, exec_info in active_executions.items():
         try:
-            status_info = await workflow_engine.get_execution_status(exec_id)
-            execution = await workflow_engine.get_execution(exec_id)
+            # Check if this execution belongs to the user
+            exec_user_id = exec_info.get("user_id")
+            if exec_user_id != user_id:
+                continue  # Skip executions from other users
             
-            if status_info and execution:
-                start_time = None
-                end_time = None
-                
-                if hasattr(execution, 'start_time') and execution.start_time:
-                    start_time = execution.start_time.isoformat() if hasattr(execution.start_time, 'isoformat') else str(execution.start_time)
-                
-                if hasattr(execution, 'end_time') and execution.end_time:
-                    end_time = execution.end_time.isoformat() if hasattr(execution.end_time, 'isoformat') else str(execution.end_time)
-                
+            request_info = exec_info.get("request", {})
+            execution_mode = request_info.get("execution_mode", "workflow")
+            
+            if execution_mode in ["code", "maf-workflow"]:
+                # Code-based or MAF workflow execution
                 executions.append({
                     "execution_id": exec_id,
-                    "status": status_info.get("status", "unknown"),
-                    "topic": exec_info["request"]["topic"],
-                    "start_time": start_time,
-                    "end_time": end_time,
+                    "status": exec_info.get("status", "running"),
+                    "topic": request_info.get("topic", "Unknown"),
+                    "start_time": exec_info.get("start_time"),
+                    "end_time": exec_info.get("end_time"),
                 })
+            else:
+                # Workflow-based execution
+                if workflow_engine:
+                    status_info = await workflow_engine.get_execution_status(exec_id)
+                    execution = await workflow_engine.get_execution(exec_id)
+                    
+                    if status_info and execution:
+                        start_time = None
+                        end_time = None
+                        
+                        if hasattr(execution, 'start_time') and execution.start_time:
+                            start_time = execution.start_time.isoformat() if hasattr(execution.start_time, 'isoformat') else str(execution.start_time)
+                        
+                        if hasattr(execution, 'end_time') and execution.end_time:
+                            end_time = execution.end_time.isoformat() if hasattr(execution.end_time, 'isoformat') else str(execution.end_time)
+                        
+                        executions.append({
+                            "execution_id": exec_id,
+                            "status": status_info.get("status", "unknown"),
+                            "topic": request_info.get("topic", "Unknown"),
+                            "start_time": start_time,
+                            "end_time": end_time,
+                        })
         except Exception as e:
-            logger.error(f"Error getting execution info", execution_id=exec_id, error=str(e))
+            logger.error(f"Error getting active execution info", execution_id=exec_id, error=str(e))
+    
+    # Get recent completed executions from Cosmos DB (last 24 hours) for this user
+    try:
+        from app.persistence.cosmos_memory import get_cosmos_store
+        from datetime import datetime, timedelta
+        
+        cosmos = get_cosmos_store()
+        await cosmos.ensure_initialized()
+        
+        # Get recent runs (last 50) for this specific user
+        query = """
+        SELECT c.run_id, c.status, c.topic, c.started_at, c.completed_at
+        FROM c 
+        WHERE c.data_type='research_run' 
+        AND c.user_id=@user_id
+        AND c.started_at >= @cutoff_time
+        ORDER BY c.started_at DESC
+        OFFSET 0 LIMIT 50
+        """
+        
+        # Get runs from last 24 hours
+        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        parameters = [
+            {"name": "@user_id", "value": user_id},
+            {"name": "@cutoff_time", "value": cutoff}
+        ]
+        
+        query_iter = cosmos._container.query_items(
+            query=query,
+            parameters=parameters
+        )
+        
+        async for item in query_iter:
+            # Only add if not already in active executions
+            if item['run_id'] not in active_executions:
+                executions.append({
+                    "execution_id": item['run_id'],
+                    "status": item.get('status', 'unknown'),
+                    "topic": item.get('topic', 'Unknown'),
+                    "start_time": item.get('started_at'),
+                    "end_time": item.get('completed_at'),
+                })
+    except Exception as e:
+        logger.warning(f"Failed to load recent executions from Cosmos DB", error=str(e))
     
     return {"executions": executions}
 
@@ -1150,15 +1429,102 @@ async def websocket_research_updates(websocket: WebSocket, execution_id: str):
     try:
         logger.info(f"WebSocket connected for execution {execution_id}")
         
-        # Send initial status
-        if execution_id in active_executions:
-            exec_info = active_executions[execution_id]
-            execution = exec_info["execution"]
+        # Check if this is an active execution
+        if execution_id not in active_executions:
+            # Historical execution - load from Cosmos DB and send complete state
+            logger.info(f"Loading historical execution from Cosmos DB for WebSocket", execution_id=execution_id)
             
+            try:
+                from app.persistence.cosmos_memory import get_cosmos_store
+                cosmos = get_cosmos_store()
+                await cosmos.initialize()
+                
+                run = await cosmos.get_run(execution_id)
+                
+                if run:
+                    # Send initial status with historical data
+                    await websocket.send_json({
+                        "type": "status",
+                        "execution_id": execution_id,
+                        "status": run.status,
+                        "message": "Loaded historical execution"
+                    })
+                    
+                    # Send task details from execution_details if available
+                    if run.execution_details and "tasks" in run.execution_details:
+                        for task in run.execution_details["tasks"]:
+                            await websocket.send_json({
+                                "type": "task_update",
+                                "execution_id": execution_id,
+                                "task_id": task.get("task_number", 0),
+                                "task_name": task.get("name", "Unknown"),
+                                "status": task.get("status", "unknown"),
+                                "agent": task.get("agent", ""),
+                                "output": task.get("output", ""),
+                                "duration": task.get("duration")
+                            })
+                    
+                    # Send final completion status
+                    result_data = None
+                    if run.metadata:
+                        result_data = {
+                            "research_plan": run.metadata.get("research_plan", ""),
+                            "core_concepts": run.metadata.get("core_concepts", ""),
+                            "current_state": run.metadata.get("current_state", ""),
+                            "applications": run.metadata.get("applications", ""),
+                            "challenges": run.metadata.get("challenges", ""),
+                            "future_trends": run.metadata.get("future_trends", ""),
+                            "final_report": run.research_report or "",
+                            "executive_summary": run.summary or ""
+                        }
+                    
+                    await websocket.send_json({
+                        "type": "completed",
+                        "execution_id": execution_id,
+                        "status": run.status,
+                        "result": result_data,
+                        "error": run.error_message
+                    })
+                    
+                    # Keep connection open but don't send further updates
+                    while True:
+                        await asyncio.sleep(10)
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "execution_id": execution_id,
+                        "error": "Execution not found in active executions or history"
+                    })
+                    return
+                    
+            except Exception as e:
+                logger.error(f"Error loading historical execution", execution_id=execution_id, error=str(e))
+                await websocket.send_json({
+                    "type": "error",
+                    "execution_id": execution_id,
+                    "error": f"Failed to load execution: {str(e)}"
+                })
+                return
+        
+        # Active execution - original logic
+        exec_info = active_executions[execution_id]
+        
+        # Determine execution mode and send initial status
+        if "execution" in exec_info and hasattr(exec_info.get("execution"), 'status'):
+            # YAML workflow mode
+            execution = exec_info["execution"]
             await websocket.send_json({
                 "type": "status",
                 "execution_id": execution_id,
                 "status": execution.status.value,
+                "message": "Connected to execution updates"
+            })
+        else:
+            # Code-based or MAF workflow mode
+            await websocket.send_json({
+                "type": "status",
+                "execution_id": execution_id,
+                "status": exec_info.get("status", "running"),
                 "message": "Connected to execution updates"
             })
         
@@ -1229,26 +1595,126 @@ async def websocket_research_updates(websocket: WebSocket, execution_id: str):
             websocket_connections.remove(websocket)
 
 
+async def save_execution_to_cosmos(execution_id: str, status: str, results: Dict[str, Any], execution_details: Optional[Dict[str, Any]] = None):
+    """
+    Helper function to save execution results to Cosmos DB.
+    Works for all execution modes: workflow, code, maf-workflow.
+    """
+    try:
+        exec_info = active_executions.get(execution_id, {})
+        run_id = exec_info.get("run_id")
+        session_id = exec_info.get("session_id")
+        
+        logger.info(f"💾 Saving execution to Cosmos DB: execution_id={execution_id}, run_id={run_id}, status={status}")
+        
+        if not run_id or not session_id:
+            logger.warning(f"⚠️ Cannot save - missing run_id or session_id: run_id={run_id}, session_id={session_id}")
+            return
+        
+        from app.persistence.cosmos_memory import get_cosmos_store
+        cosmos = get_cosmos_store()
+        
+        # Prepare update data
+        update_data = {
+            "status": "completed" if status in ["success", "completed"] else "failed",
+            "progress": 100.0 if status in ["success", "completed"] else exec_info.get("progress", 0),
+            "completed_at": datetime.now(timezone.utc),
+        }
+        
+        # Add execution details if provided (from workflow mode)
+        if execution_details:
+            update_data["execution_details"] = execution_details
+        
+        # Extract and save results
+        if results:
+            # Save final report
+            if "final_report" in results:
+                update_data["research_report"] = results.get("final_report")
+            elif "report" in results:
+                update_data["research_report"] = results.get("report")
+            
+            # Save executive summary
+            if "executive_summary" in results:
+                update_data["executive_summary"] = results.get("executive_summary")
+            elif "summary" in results:
+                update_data["executive_summary"] = results.get("summary")
+            
+            # Save research plan
+            if "research_plan" in results:
+                update_data["research_plan"] = results.get("research_plan")
+            
+            # Save all results in metadata
+            update_data["metadata"] = results
+        
+        # Add completed tasks from exec_info
+        if "completed_tasks" in exec_info:
+            update_data["completed_tasks"] = exec_info["completed_tasks"]
+        
+        await cosmos.update_run(run_id, update_data)
+        logger.info(f"✅ Saved execution to Cosmos DB successfully", run_id=run_id, status=update_data["status"])
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save execution to Cosmos DB: {e}", exc_info=True)
+
+
 async def monitor_execution(execution_id: str):
     """Background task to monitor workflow execution and broadcast updates."""
     try:
+        logger.info(f"🔍 Starting monitor_execution for execution_id={execution_id}")
+        
         if not workflow_engine:
             logger.error("Workflow engine not available for monitoring")
             return
         
         execution_complete = False
         
+        # Get the workflow execution ID (stored when workflow was started)
+        exec_info = active_executions.get(execution_id, {})
+        workflow_execution_id = exec_info.get("workflow_execution_id", execution_id)
+        
+        logger.info(f"🔍 Monitoring workflow_execution_id={workflow_execution_id} for execution_id={execution_id}")
+        
         while not execution_complete:
             try:
-                # Get status from workflow engine
-                status = await workflow_engine.get_execution_status(execution_id)
-                execution = await workflow_engine.get_execution(execution_id)
+                # Get status from workflow engine using workflow_execution_id
+                status = await workflow_engine.get_execution_status(workflow_execution_id)
+                execution = await workflow_engine.get_execution(workflow_execution_id)
                 
                 if not status:
-                    logger.warning(f"No status found for execution {execution_id}")
-                    break
+                    logger.warning(f"No status found for workflow_execution_id {workflow_execution_id}")
+                    await asyncio.sleep(2)
+                    continue
                 
                 workflow_status = status.get("status", "").lower()
+                
+                # Update ResearchRun progress in Cosmos DB periodically
+                try:
+                    exec_info = active_executions.get(execution_id, {})
+                    run_id = exec_info.get("run_id")
+                    
+                    if run_id:
+                        from app.persistence.cosmos_memory import get_cosmos_store
+                        cosmos = get_cosmos_store()
+                        
+                        progress_update = {
+                            "status": "running",
+                            "progress": status.get("progress", 0),
+                        }
+                        
+                        # Add task execution details if available
+                        if execution and hasattr(execution, 'task_executions'):
+                            task_list = execution.task_executions if isinstance(execution.task_executions, list) else list(execution.task_executions.values())
+                            completed_tasks = [
+                                t.task_name if hasattr(t, 'task_name') else str(t)
+                                for t in task_list
+                                if hasattr(t, 'status') and str(t.status).lower() in ["completed", "success"]
+                            ]
+                            if completed_tasks:
+                                progress_update["completed_tasks"] = completed_tasks
+                        
+                        await cosmos.update_run(run_id, progress_update)
+                except Exception as e:
+                    logger.debug(f"Failed to update progress in Cosmos DB: {e}")
                 
                 # Broadcast updates to all connected WebSocket clients
                 for ws in websocket_connections[:]:
@@ -1281,7 +1747,61 @@ async def monitor_execution(execution_id: str):
                 # Check if complete
                 if workflow_status in ["success", "failed", "cancelled", "workflowstatus.success"]:
                     execution_complete = True
-                    logger.info(f"Execution {execution_id} completed with status {workflow_status}")
+                    logger.info(f"✅ Execution {execution_id} completed with status {workflow_status}")
+                    
+                    # Extract execution details for Cosmos DB
+                    try:
+                        # Extract ALL execution details
+                        execution_details = {
+                            "workflow_name": execution.workflow_name if hasattr(execution, 'workflow_name') else None,
+                            "workflow_status": workflow_status,
+                            "start_time": execution.start_time.isoformat() if hasattr(execution, 'start_time') and execution.start_time else None,
+                            "end_time": execution.end_time.isoformat() if hasattr(execution, 'end_time') and execution.end_time else None,
+                            "duration": execution.duration if hasattr(execution, 'duration') else None,
+                            "total_tasks": status.get("total_tasks", 0),
+                            "completed_tasks_count": status.get("completed_tasks", 0),
+                        }
+                        
+                        # Extract task execution details
+                        task_details = []
+                        if hasattr(execution, 'task_executions'):
+                            task_list = execution.task_executions if isinstance(execution.task_executions, list) else list(execution.task_executions.values())
+                            for t in task_list:
+                                task_info = {
+                                    "task_name": t.task_name if hasattr(t, 'task_name') else str(t),
+                                    "status": str(t.status) if hasattr(t, 'status') else "unknown",
+                                    "start_time": t.start_time.isoformat() if hasattr(t, 'start_time') and t.start_time else None,
+                                    "end_time": t.end_time.isoformat() if hasattr(t, 'end_time') and t.end_time else None,
+                                    "duration": t.duration if hasattr(t, 'duration') else None,
+                                    "agent": t.agent if hasattr(t, 'agent') else None,
+                                    "error": t.error if hasattr(t, 'error') else None,
+                                }
+                                if hasattr(t, 'output'):
+                                    task_info["output"] = t.output
+                                elif hasattr(t, 'result'):
+                                    task_info["result"] = t.result
+                                task_details.append(task_info)
+                        
+                        execution_details["tasks"] = task_details
+                        
+                        # Get final results
+                        final_results = {}
+                        if hasattr(execution, 'variables') and execution.variables:
+                            final_results = execution.variables
+                        elif hasattr(execution, 'output_variables'):
+                            final_results = execution.output_variables
+                        
+                        # Save to Cosmos DB
+                        await save_execution_to_cosmos(
+                            execution_id=execution_id,
+                            status=workflow_status,
+                            results=final_results,
+                            execution_details=execution_details
+                        )
+                        
+                    except Exception as e:
+                        logger.error(f"❌ Failed to save workflow execution to Cosmos DB: {e}", exc_info=True)
+                    
                     break
                 
             except Exception as e:
@@ -1370,6 +1890,35 @@ async def execute_maf_workflow_research_task(
             duration = (datetime.now() - start_time).total_seconds()
             active_executions[execution_id]["duration"] = duration
             
+            # Build execution_details from completed_tasks
+            exec_info = active_executions[execution_id]
+            completed_tasks = exec_info.get("completed_tasks", [])
+            
+            execution_details = {
+                "tasks": [],
+                "total_duration": duration,
+                "execution_mode": "maf-workflow"
+            }
+            
+            # Map completed executors to task details
+            for i, executor_id in enumerate(completed_tasks, 1):
+                execution_details["tasks"].append({
+                    "task_number": i,
+                    "name": executor_id,
+                    "status": "completed",
+                    "agent": executor_id,
+                    "output": "",  # MAF workflow doesn't provide per-executor output
+                    "duration": None
+                })
+            
+            # Save to Cosmos DB with execution details
+            await save_execution_to_cosmos(
+                execution_id=execution_id,
+                status=results.get("status", "success"),
+                results=results,
+                execution_details=execution_details
+            )
+            
             # Broadcast completion to WebSocket clients
             for ws in websocket_connections[:]:
                 try:
@@ -1394,6 +1943,45 @@ async def execute_maf_workflow_research_task(
             active_executions[execution_id]["status"] = "failed"
             active_executions[execution_id]["end_time"] = datetime.now().isoformat()
             active_executions[execution_id]["error"] = str(e)
+            
+            # Build execution_details for failed execution
+            exec_info = active_executions[execution_id]
+            completed_tasks = exec_info.get("completed_tasks", [])
+            current_task = exec_info.get("current_task")
+            
+            execution_details = {
+                "tasks": [],
+                "execution_mode": "maf-workflow",
+                "error": str(e)
+            }
+            
+            # Add completed executors
+            for i, executor_id in enumerate(completed_tasks, 1):
+                execution_details["tasks"].append({
+                    "task_number": i,
+                    "name": executor_id,
+                    "status": "completed",
+                    "agent": executor_id,
+                    "output": ""
+                })
+            
+            # Add current task as failed
+            if current_task and current_task != "Initializing MAF workflow...":
+                execution_details["tasks"].append({
+                    "task_number": len(completed_tasks) + 1,
+                    "name": current_task,
+                    "status": "failed",
+                    "agent": "maf-workflow",
+                    "output": f"Error: {str(e)}"
+                })
+            
+            # Save error to Cosmos DB with execution details
+            await save_execution_to_cosmos(
+                execution_id=execution_id,
+                status="failed",
+                results={"error": str(e)},
+                execution_details=execution_details
+            )
             
             # Broadcast error to WebSocket clients
             for ws in websocket_connections[:]:
@@ -1444,6 +2032,78 @@ async def execute_code_based_research(
             duration = (datetime.now() - start_time).total_seconds()
             active_executions[execution_id]["duration"] = duration
             
+            # Build execution_details from completed_tasks and results
+            exec_info = active_executions[execution_id]
+            completed_tasks = exec_info.get("completed_tasks", [])
+            
+            # Create execution details with task breakdown
+            execution_details = {
+                "tasks": [],
+                "total_duration": duration,
+                "execution_mode": "code"
+            }
+            
+            # Map completed tasks to execution details with actual research outputs
+            # Build comprehensive output for Phase 2 (5 concurrent research tasks)
+            phase2_outputs = []
+            if results.get("core_concepts"):
+                phase2_outputs.append(f"**Core Concepts:**\n{results['core_concepts']}")
+            if results.get("current_state"):
+                phase2_outputs.append(f"**Current State:**\n{results['current_state']}")
+            if results.get("applications"):
+                phase2_outputs.append(f"**Applications:**\n{results['applications']}")
+            if results.get("challenges"):
+                phase2_outputs.append(f"**Challenges:**\n{results['challenges']}")
+            if results.get("future_trends"):
+                phase2_outputs.append(f"**Future Trends:**\n{results['future_trends']}")
+            
+            phase2_combined_output = "\n\n".join(phase2_outputs) if phase2_outputs else "Completed 5 concurrent research tasks"
+            
+            # Build comprehensive output for Phase 3-6 (synthesis results)
+            phase3_outputs = []
+            if results.get("draft_report"):
+                phase3_outputs.append(f"**Draft Report (Writer):**\n{results['draft_report']}")
+            if results.get("validation_results"):
+                phase3_outputs.append(f"**Validation Results (Reviewer):**\n{results['validation_results']}")
+            if results.get("executive_summary"):
+                phase3_outputs.append(f"**Executive Summary (Summarizer):**\n{results['executive_summary']}")
+            
+            phase3_combined_output = "\n\n".join(phase3_outputs) if phase3_outputs else results.get("final_report", "")
+            
+            task_mapping = {
+                "Phase 1: Research Planning (SequentialPattern)": {
+                    "agent": "planner",
+                    "output": results.get("research_plan", "")
+                },
+                "Phase 2: Concurrent Investigation (ConcurrentPattern)": {
+                    "agent": "researcher (concurrent)",
+                    "output": phase2_combined_output
+                },
+                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)": {
+                    "agent": "writer → reviewer → summarizer",
+                    "output": phase3_combined_output
+                }
+            }
+            
+            for i, task_name in enumerate(completed_tasks, 1):
+                task_info = task_mapping.get(task_name, {})
+                execution_details["tasks"].append({
+                    "task_number": i,
+                    "name": task_name,
+                    "status": "completed",
+                    "agent": task_info.get("agent", "unknown"),
+                    "output": task_info.get("output", ""),
+                    "duration": None  # Code mode doesn't track per-task duration
+                })
+            
+            # Save to Cosmos DB with execution details
+            await save_execution_to_cosmos(
+                execution_id=execution_id,
+                status="success",
+                results=results,
+                execution_details=execution_details
+            )
+            
             # Broadcast completion to WebSocket clients
             for ws in websocket_connections[:]:
                 try:
@@ -1469,6 +2129,45 @@ async def execute_code_based_research(
             active_executions[execution_id]["end_time"] = datetime.now().isoformat()
             active_executions[execution_id]["error"] = str(e)
             
+            # Build execution_details even for failed executions
+            exec_info = active_executions[execution_id]
+            completed_tasks = exec_info.get("completed_tasks", [])
+            current_task = exec_info.get("current_task")
+            
+            execution_details = {
+                "tasks": [],
+                "execution_mode": "code",
+                "error": str(e)
+            }
+            
+            # Add completed tasks
+            for i, task_name in enumerate(completed_tasks, 1):
+                execution_details["tasks"].append({
+                    "task_number": i,
+                    "name": task_name,
+                    "status": "completed",
+                    "agent": "code-based",
+                    "output": ""
+                })
+            
+            # Add current task as failed
+            if current_task:
+                execution_details["tasks"].append({
+                    "task_number": len(completed_tasks) + 1,
+                    "name": current_task,
+                    "status": "failed",
+                    "agent": "code-based",
+                    "output": f"Error: {str(e)}"
+                })
+            
+            # Save error to Cosmos DB with execution details
+            await save_execution_to_cosmos(
+                execution_id=execution_id,
+                status="failed",
+                results={"error": str(e)},
+                execution_details=execution_details
+            )
+            
             # Broadcast error to WebSocket clients
             for ws in websocket_connections[:]:
                 try:
@@ -1482,6 +2181,38 @@ async def execute_code_based_research(
                     logger.warning(f"Failed to send error WebSocket update", error=str(e2))
                     if ws in websocket_connections:
                         websocket_connections.remove(ws)
+
+
+# Mount static files (frontend build) if they exist
+# This allows serving the frontend from the same container
+# __file__ is /app/app/main.py, so parent.parent gives us /app
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists() and static_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+    
+    # Serve static files
+    app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+    
+    # Serve index.html for all other routes (SPA support)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve the React SPA for all non-API routes."""
+        # Don't interfere with API routes and specific endpoints
+        if (full_path.startswith("api/") or 
+            full_path.startswith("ws/") or 
+            full_path == "health" or
+            full_path == "docs" or
+            full_path == "redoc" or
+            full_path == "openapi.json"):
+            raise HTTPException(status_code=404)
+        
+        # If it's the root path or any other path, serve index.html
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        else:
+            raise HTTPException(status_code=404)
 
 
 if __name__ == "__main__":

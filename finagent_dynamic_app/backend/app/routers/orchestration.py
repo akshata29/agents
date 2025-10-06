@@ -166,23 +166,32 @@ async def get_plan_details(
 
 @router.get("/tasks", response_model=List[TaskListItem])
 async def list_all_tasks(
+    request: Request,
     limit: int = Query(50, description="Maximum number of tasks to return"),
     orchestrator: TaskOrchestrator = Depends(get_task_orchestrator)
 ):
     """
-    List all research tasks across all sessions.
+    List all research tasks for the authenticated user across all sessions.
     
     **Query Parameters:**
     - `limit`: Maximum number of tasks to return (default: 50)
     
     **Response:**
-    Returns list of all task summaries, ordered by creation time (most recent first).
+    Returns list of task summaries for the authenticated user, ordered by creation time (most recent first).
     """
-    logger.info("API: Listing all tasks", limit=limit)
+    # Extract authenticated user details
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
+    user_id = authenticated_user.get("user_principal_id")
+    
+    if not user_id:
+        logger.error("API: No user_principal_id found in headers")
+        raise HTTPException(status_code=401, detail="User authentication required")
+    
+    logger.info("API: Listing all tasks", limit=limit, user_id=user_id)
 
     try:
-        # Get all sessions from Cosmos
-        sessions = await orchestrator.cosmos.get_all_sessions(limit=limit)
+        # Get all sessions from Cosmos filtered by authenticated user
+        sessions = await orchestrator.cosmos.get_all_sessions(limit=limit, user_id=user_id)
         
         # For each session, get the plan and build TaskListItem
         task_list = []

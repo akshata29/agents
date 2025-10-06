@@ -466,30 +466,52 @@ class CosmosMemoryStore:
             logger.error(f"Failed to get files for session", error=str(e))
             return []
     
-    async def get_all_sessions(self, limit: int = 50) -> List[Session]:
-        """Get all sessions ordered by timestamp descending."""
+    async def get_all_sessions(self, limit: int = 50, user_id: Optional[str] = None) -> List[Session]:
+        """
+        Get all sessions ordered by timestamp descending.
+        
+        Args:
+            limit: Maximum number of sessions to return
+            user_id: Optional user ID to filter sessions (for security/multi-tenancy)
+        """
         try:
-            query = """
-            SELECT * FROM c 
-            WHERE c.data_type = @data_type
-            ORDER BY c.timestamp DESC
-            OFFSET 0 LIMIT @limit
-            """
+            if user_id:
+                # Filter by user_id for multi-user security
+                query = """
+                SELECT * FROM c 
+                WHERE c.data_type = @data_type AND c.user_id = @user_id
+                ORDER BY c.timestamp DESC
+                OFFSET 0 LIMIT @limit
+                """
+                params = [
+                    {"name": "@data_type", "value": DataType.SESSION.value},
+                    {"name": "@user_id", "value": user_id},
+                    {"name": "@limit", "value": limit}
+                ]
+            else:
+                # Get all sessions (admin/development mode)
+                query = """
+                SELECT * FROM c 
+                WHERE c.data_type = @data_type
+                ORDER BY c.timestamp DESC
+                OFFSET 0 LIMIT @limit
+                """
+                params = [
+                    {"name": "@data_type", "value": DataType.SESSION.value},
+                    {"name": "@limit", "value": limit}
+                ]
             
-            params = [
-                {"name": "@data_type", "value": DataType.SESSION.value},
-                {"name": "@limit", "value": limit}
-            ]
+            # Note: Not specifying partition_key allows cross-partition queries by default in async SDK
             items = self.container.query_items(
                 query=query,
-                parameters=params,
+                parameters=params
             )
             
             sessions = []
             async for item in items:
                 sessions.append(Session(**item))
             
-            logger.info(f"Retrieved {len(sessions)} sessions")
+            logger.info(f"Retrieved {len(sessions)} sessions", user_id=user_id if user_id else "all")
             return sessions
             
         except Exception as e:

@@ -11,7 +11,7 @@ from typing import Optional
 
 import structlog
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -130,9 +130,9 @@ async def health_check():
     }
 
 
-@app.get("/")
+@app.get("/api")
 async def root():
-    """Root endpoint with API information."""
+    """API information endpoint."""
     return {
         "name": "Multimodal Insights API",
         "version": "1.0.0",
@@ -159,6 +159,32 @@ async def root():
             "GroupChat Pattern (Collaboration)"
         ]
     }
+
+
+# Mount static files (frontend build) if they exist
+# This allows serving the frontend from the same container
+# __file__ is /app/app/main.py, so parent.parent gives us /app
+from pathlib import Path
+static_dir = Path(__file__).parent.parent / "static"
+if static_dir.exists() and static_dir.is_dir():
+    from fastapi.responses import FileResponse
+    
+    # Serve static files
+    app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+    
+    # Serve index.html for all other routes (SPA support)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve the React SPA for all non-API routes."""
+        # Don't interfere with API routes
+        if full_path.startswith("api/") or full_path in ["health", "docs", "redoc", "openapi.json"]:
+            raise HTTPException(status_code=404)
+        
+        index_file = static_dir / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        else:
+            raise HTTPException(status_code=404)
 
 
 if __name__ == "__main__":

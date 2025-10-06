@@ -5,7 +5,7 @@ REST API endpoints for file upload and management.
 Built from scratch for multimodal content processing.
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, status
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends, status, Request
 from fastapi.responses import FileResponse
 from typing import List, Optional
 import structlog
@@ -14,6 +14,7 @@ from ..models.task_models import FileMetadata, FileUploadResponse
 from ..services.file_handler import FileHandler
 from ..persistence.cosmos_memory import CosmosMemoryStore
 from ..infra.settings import Settings
+from ..auth.auth_utils import get_authenticated_user_details
 
 logger = structlog.get_logger(__name__)
 
@@ -53,9 +54,9 @@ def get_memory_store() -> CosmosMemoryStore:
 
 @router.post("/upload", response_model=FileUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_files(
+    request: Request,
     files: List[UploadFile] = File(...),
     session_id: str = Form(...),
-    user_id: str = Form(default="default_user"),
     file_handler: FileHandler = Depends(get_file_handler),
     memory_store: CosmosMemoryStore = Depends(get_memory_store)
 ):
@@ -68,17 +69,23 @@ async def upload_files(
     - PDF: .pdf
     
     Args:
+        request: FastAPI request (for extracting user from headers)
         files: List of files to upload
         session_id: Session ID for organizing files
-        user_id: User ID (optional)
     
     Returns:
         Action response with file metadata
     """
+    # Extract user details from Azure EasyAuth headers (or local dev mock)
+    user_details = get_authenticated_user_details(request.headers)
+    user_id = user_details.get("user_principal_id", "unknown-user")
+    
     logger.info(
         "Uploading files via API",
         file_count=len(files),
-        session_id=session_id
+        session_id=session_id,
+        user_id=user_id,
+        user_name=user_details.get("user_name", "unknown")
     )
     
     try:

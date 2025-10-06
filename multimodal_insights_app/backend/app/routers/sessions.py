@@ -4,13 +4,14 @@ Sessions API Router
 Handles session history and retrieval endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List, Optional
 from pydantic import BaseModel
 import structlog
 
 from ..persistence.cosmos_memory import CosmosMemoryStore
 from ..models.task_models import Session, Plan, PlanWithSteps
+from ..auth.auth_utils import get_authenticated_user_details
 from .files import get_memory_store
 
 logger = structlog.get_logger(__name__)
@@ -37,13 +38,22 @@ class SessionWithDetails(BaseModel):
 
 @router.get("", response_model=List[SessionWithDetails])
 async def list_sessions(
+    request: Request,
     limit: int = 50,
     memory_store: CosmosMemoryStore = Depends(get_memory_store)
 ):
-    """Get all sessions with enriched details ordered by most recent."""
-    logger.info("Listing sessions with details", limit=limit)
+    """Get all sessions for the authenticated user with enriched details ordered by most recent."""
+    # Extract authenticated user details
+    user_details = get_authenticated_user_details(request.headers)
+    user_id = user_details.get("user_principal_id")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User authentication required")
+    
+    logger.info("Listing sessions with details", limit=limit, user_id=user_id)
     try:
-        sessions = await memory_store.get_all_sessions(limit=limit)
+        # Get sessions filtered by authenticated user_id
+        sessions = await memory_store.get_all_sessions(limit=limit, user_id=user_id)
         
         # Enrich each session with latest plan objective and file info
         enriched_sessions = []

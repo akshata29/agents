@@ -1,0 +1,58 @@
+# Node modules
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Python
+backend/__pycache__
+backend/**/__pycache__
+backend/*.pyc
+backend/**/*.pyc
+backend/.env
+backend/venv
+backend/env
+backend/.venv
+
+# Logs
+backend/*.log
+backend/**/*.log
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Test files
+backend/tests
+frontend/tests
+
+# Development files
+backend/removeenv.ps1
+backend/start.bat
+backend/start.ps1
+frontend/start.ps1
+dev.ps1
+
+# Data directories (may contain large files)
+backend/data/*
+backend/uploads/*
+backend/reports/*
+backend/exports/*
+
+# Keep directory structure
+!backend/data/.gitkeep
+!backend/uploads/.gitkeep
+!backend/reports/.gitkeep
+!backend/exports/.gitkeep

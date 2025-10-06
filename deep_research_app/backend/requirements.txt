@@ -1,7 +1,7 @@
 # Deep Research Backend Requirements
 
-# Framework (local installation)
-# Install with: pip install -e ../../framework
+# Microsoft Agent Framework (using beta version as stable not yet released)
+agent-framework
 
 # API Framework
 fastapi>=0.104.1
@@ -14,6 +14,13 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 structlog>=23.2.0
 python-dotenv>=1.0.0
+
+# Azure dependencies (required by framework)
+azure-identity>=1.15.0
+azure-cosmos>=4.5.1
+
+# YAML support (required by framework for workflow definitions)
+pyyaml>=6.0.1
 
 # AI/ML dependencies
 openai>=1.12.0

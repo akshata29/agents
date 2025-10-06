@@ -40,6 +40,10 @@ from framework.patterns.group_chat import GroupChatPattern
 from framework.core.registry import AgentRegistry, AgentMetadata
 from framework.config.settings import Settings as FrameworkSettings
 
+# Import persistence layer
+from ..persistence.cosmos_memory import CosmosMemoryStore
+from ..models.persistence_models import ResearchRun, ResearchSession
+
 logger = structlog.get_logger(__name__)
 
 
@@ -72,16 +76,79 @@ class FinancialOrchestrationService:
         # Initialize agents (without registration)
         self.agents = self._create_agents()
         
-        # Active executions
+        # Active executions (in-memory cache)
         self._active_runs: Dict[str, OrchestrationResponse] = {}
         self._execution_lock = asyncio.Lock()
+        
+        # Initialize Cosmos DB persistence (if configured)
+        self.cosmos: Optional[CosmosMemoryStore] = None
+        if settings.cosmos_db_endpoint:
+            self.cosmos = CosmosMemoryStore(
+                endpoint=settings.cosmos_db_endpoint,
+                database_name=settings.cosmos_db_database,
+                container_name=settings.cosmos_db_container,
+            )
+            logger.info("Cosmos DB persistence enabled", 
+                       database=settings.cosmos_db_database,
+                       container=settings.cosmos_db_container)
+        else:
+            logger.warning("Cosmos DB not configured - runs will only be stored in memory")
         
         logger.info("FinancialOrchestrationService initialized with framework patterns", 
                     num_agents=len(self.agents))
     
     async def initialize(self) -> None:
-        """Async initialization - register agents with the framework registry."""
+        """Async initialization - register agents and initialize Cosmos DB."""
         await self._register_agents()
+        
+        # Initialize Cosmos DB if configured
+        if self.cosmos:
+            await self.cosmos.initialize()
+            logger.info("Cosmos DB persistence initialized")
+    
+    async def _save_run_to_cosmos(
+        self,
+        response: OrchestrationResponse,
+        user_id: str,
+        session_id: str,
+        request_params: Dict[str, Any]
+    ) -> None:
+        """Save research run to Cosmos DB."""
+        if not self.cosmos:
+            return
+        
+        try:
+            # Convert OrchestrationResponse to ResearchRun
+            research_run = ResearchRun(
+                id=response.run_id,
+                run_id=response.run_id,
+                session_id=session_id,
+                user_id=user_id,
+                ticker=response.ticker,
+                pattern=response.pattern.value,
+                status=response.status.value,
+                started_at=response.started_at,
+                completed_at=response.completed_at,
+                execution_time=response.duration_seconds,
+                request_params=request_params,
+                summary=response.summary,
+                investment_thesis=response.investment_thesis,
+                key_risks=response.key_risks,
+                pdf_url=response.pdf_url,
+                steps_count=len(response.steps),
+                messages_count=len(response.messages),
+                artifacts_count=len(response.artifacts),
+                error=response.error,
+                full_response=response.model_dump(),
+                metadata=response.metadata
+            )
+            
+            # Upsert (create or update)
+            await self.cosmos.update_run(research_run)
+            logger.debug("Saved run to Cosmos DB", run_id=response.run_id)
+            
+        except Exception as e:
+            logger.error("Failed to save run to Cosmos DB", run_id=response.run_id, error=str(e))
     
     def _create_agents(self) -> Dict[str, Any]:
         """Create all financial research agents (sync)."""
@@ -157,6 +224,7 @@ class FinancialOrchestrationService:
         include_pdf: bool = True,
         year: Optional[str] = None,
         run_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         progress_callback: Optional[callable] = None
     ) -> OrchestrationResponse:
         """
@@ -171,13 +239,43 @@ class FinancialOrchestrationService:
             include_pdf: Whether to generate PDF report
             year: Optional year for historical analysis
             run_id: Optional pre-generated run ID
+            user_id: Optional user identifier for tracking
             progress_callback: Optional async function to call after each step
         """
         run_id = run_id or str(uuid.uuid4())
+        user_id = user_id or "unknown-user"
         started_at = datetime.utcnow()
         
-        logger.info("Starting sequential execution with SequentialPattern",
-                    run_id=run_id, ticker=ticker, scope=scope)
+        # Create session ID (one session per research run)
+        session_id = f"fin-{ticker}-{run_id[:8]}"
+        
+        logger.info(
+            "Starting sequential execution with SequentialPattern",
+            run_id=run_id,
+            session_id=session_id,
+            ticker=ticker,
+            scope=scope,
+            user_id=user_id
+        )
+        
+        # Create session in Cosmos DB
+        if self.cosmos:
+            try:
+                session = ResearchSession(
+                    id=session_id,
+                    session_id=session_id,
+                    user_id=user_id,
+                    metadata={
+                        "ticker": ticker,
+                        "pattern": "sequential",
+                        "scope": scope,
+                        "depth": depth
+                    }
+                )
+                await self.cosmos.create_session(session)
+                logger.debug("Created session in Cosmos", session_id=session_id)
+            except Exception as e:
+                logger.warning("Failed to create session in Cosmos", error=str(e))
         
         # Build agent sequence based on scope
         agent_sequence = []
@@ -336,6 +434,20 @@ class FinancialOrchestrationService:
                         steps=step_num-1,
                         artifacts=len(response.artifacts))
             
+            # Save to Cosmos DB
+            await self._save_run_to_cosmos(
+                response=response,
+                user_id=user_id,
+                session_id=session_id,
+                request_params={
+                    "ticker": ticker,
+                    "scope": scope,
+                    "depth": depth,
+                    "include_pdf": include_pdf,
+                    "year": year
+                }
+            )
+            
             return response
             
         except Exception as e:
@@ -343,6 +455,22 @@ class FinancialOrchestrationService:
             response.status = ExecutionStatus.FAILED
             response.completed_at = datetime.utcnow()
             response.error = str(e)
+            
+            # Save failed run to Cosmos DB
+            await self._save_run_to_cosmos(
+                response=response,
+                user_id=user_id,
+                session_id=session_id,
+                request_params={
+                    "ticker": ticker,
+                    "scope": scope,
+                    "depth": depth,
+                    "include_pdf": include_pdf,
+                    "year": year
+                }
+            )
+            
+            return response
             return response
         # Create execution context
         context = {
@@ -511,6 +639,7 @@ class FinancialOrchestrationService:
         include_pdf: bool = True,
         year: Optional[str] = None,
         run_id: Optional[str] = None,
+        user_id: Optional[str] = None,
         progress_callback: Optional[callable] = None
     ) -> OrchestrationResponse:
         """
@@ -519,10 +648,39 @@ class FinancialOrchestrationService:
         Leverages MAF Concurrent Pattern for parallel agent execution with result aggregation.
         """
         run_id = run_id or str(uuid.uuid4())
+        user_id = user_id or "unknown-user"
         started_at = datetime.utcnow()
         
-        logger.info("Starting concurrent execution with ConcurrentPattern",
-                    run_id=run_id, ticker=ticker, modules=modules)
+        # Create session ID (one session per research run)
+        session_id = f"fin-{ticker}-{run_id[:8]}"
+        
+        logger.info(
+            "Starting concurrent execution with ConcurrentPattern",
+            run_id=run_id,
+            session_id=session_id,
+            ticker=ticker,
+            modules=modules,
+            user_id=user_id
+        )
+        
+        # Create session in Cosmos DB
+        if self.cosmos:
+            try:
+                session = ResearchSession(
+                    id=session_id,
+                    session_id=session_id,
+                    user_id=user_id,
+                    metadata={
+                        "ticker": ticker,
+                        "pattern": "concurrent",
+                        "modules": modules,
+                        "aggregation_strategy": aggregation_strategy
+                    }
+                )
+                await self.cosmos.create_session(session)
+                logger.debug("Created session in Cosmos", session_id=session_id)
+            except Exception as e:
+                logger.warning("Failed to create session in Cosmos", error=str(e))
         
         # Build agent list (excluding 'all' and 'report')
         agent_list = [m for m in modules if m != "all" and m != "report"]
@@ -684,6 +842,20 @@ class FinancialOrchestrationService:
                         agents=len(agent_list),
                         artifacts=len(response.artifacts))
             
+            # Save to Cosmos DB
+            await self._save_run_to_cosmos(
+                response=response,
+                user_id=user_id,
+                session_id=session_id,
+                request_params={
+                    "ticker": ticker,
+                    "modules": modules,
+                    "aggregation_strategy": aggregation_strategy,
+                    "include_pdf": include_pdf,
+                    "year": year
+                }
+            )
+            
             return response
             
         except Exception as e:
@@ -691,6 +863,21 @@ class FinancialOrchestrationService:
             response.status = ExecutionStatus.FAILED
             response.completed_at = datetime.utcnow()
             response.error = str(e)
+            
+            # Save failed run to Cosmos DB
+            await self._save_run_to_cosmos(
+                response=response,
+                user_id=user_id,
+                session_id=session_id,
+                request_params={
+                    "ticker": ticker,
+                    "modules": modules,
+                    "aggregation_strategy": aggregation_strategy,
+                    "include_pdf": include_pdf,
+                    "year": year
+                }
+            )
+            
             return response
     
     async def _execute_agent_task(

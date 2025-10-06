@@ -10,7 +10,10 @@ import type {
   Plan,
 } from '../types';
 
-const API_BASE_URL = 'http://localhost:8000'; // In production, use environment variable
+// Use relative URLs in production (same domain), localhost for development
+const API_BASE_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8000' 
+  : '';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -22,15 +25,14 @@ const api = axios.create({
 // File Upload API
 export const uploadFiles = async (
   files: File[],
-  sessionId: string,
-  userId: string = 'default_user'
+  sessionId: string
 ): Promise<UploadResponse> => {
   const formData = new FormData();
   files.forEach((file) => {
     formData.append('files', file);
   });
   formData.append('session_id', sessionId);
-  formData.append('user_id', userId);
+  // Note: user_id is now automatically extracted from Azure EasyAuth headers on the backend
 
   const response = await api.post<UploadResponse>('/api/files/upload', formData, {
     headers: {
@@ -64,15 +66,14 @@ export const deleteFile = async (fileId: string, sessionId: string): Promise<Act
 // Orchestration API
 export const createAndExecutePlan = async (
   sessionId: string,
-  userId: string,
   description: string,
   fileIds: string[],
   summaryType?: string,
   persona?: string
 ): Promise<ActionResponse> => {
+  // Note: user_id is automatically extracted from Azure EasyAuth headers on the backend
   const response = await api.post<ActionResponse>('/api/orchestration/execute-direct', {
     session_id: sessionId,
-    user_id: userId,
     description,
     file_ids: fileIds,
     summary_type: summaryType || 'detailed',

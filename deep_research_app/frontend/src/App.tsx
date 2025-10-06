@@ -5,11 +5,13 @@ import Dashboard from './components/Dashboard.tsx';
 import ResearchForm from './components/ResearchForm.tsx';
 import WorkflowVisualization from './components/WorkflowVisualization.tsx';
 import ExecutionMonitor from './components/ExecutionMonitor.tsx';
-import { Brain, Workflow, FileSearch } from 'lucide-react';
+import SessionHistoryPage from './pages/SessionHistoryPage.tsx';
+import { Brain, Workflow, FileSearch, History } from 'lucide-react';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'new' | 'workflow' | 'monitor'>('new');
+  const [activeTab, setActiveTab] = useState<'new' | 'workflow' | 'monitor' | 'history'>('new');
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string>(`session-${Date.now()}`);
 
   // Fetch workflow info
   const { data: workflowInfo } = useQuery({
@@ -20,6 +22,20 @@ function App() {
   const handleResearchStart = (executionId: string) => {
     setCurrentExecutionId(executionId);
     setActiveTab('monitor');
+  };
+
+  const handleNavigateToExecution = (executionId: string) => {
+    setCurrentExecutionId(executionId);
+    setActiveTab('monitor');
+  };
+
+  // Handle tab changes - generate new session ID when switching to New Research tab
+  const handleTabChange = (tab: 'new' | 'workflow' | 'monitor' | 'history') => {
+    if (tab === 'new') {
+      // Generate a fresh session ID for new research
+      setCurrentSessionId(`session-${Date.now()}`);
+    }
+    setActiveTab(tab);
   };
 
   return (
@@ -54,7 +70,7 @@ function App() {
         <div className="container mx-auto px-6">
           <div className="flex space-x-1">
             <button
-              onClick={() => setActiveTab('new')}
+              onClick={() => handleTabChange('new')}
               className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
                 activeTab === 'new'
                   ? 'text-primary-400 border-b-2 border-primary-400'
@@ -65,7 +81,7 @@ function App() {
               <span>New Research</span>
             </button>
             <button
-              onClick={() => setActiveTab('workflow')}
+              onClick={() => handleTabChange('workflow')}
               className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
                 activeTab === 'workflow'
                   ? 'text-primary-400 border-b-2 border-primary-400'
@@ -76,7 +92,7 @@ function App() {
               <span>Execution Modes</span>
             </button>
             <button
-              onClick={() => setActiveTab('monitor')}
+              onClick={() => handleTabChange('monitor')}
               className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
                 activeTab === 'monitor'
                   ? 'text-primary-400 border-b-2 border-primary-400'
@@ -87,6 +103,17 @@ function App() {
               <Brain className="w-4 h-4" />
               <span>Execution Monitor</span>
             </button>
+            <button
+              onClick={() => handleTabChange('history')}
+              className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
+                activeTab === 'history'
+                  ? 'text-primary-400 border-b-2 border-primary-400'
+                  : 'text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              <History className="w-4 h-4" />
+              <span>Research History</span>
+            </button>
           </div>
         </div>
       </div>
@@ -96,7 +123,7 @@ function App() {
         {activeTab === 'new' && (
           <div className="space-y-6">
             <Dashboard />
-            <ResearchForm onResearchStart={handleResearchStart} />
+            <ResearchForm onResearchStart={handleResearchStart} sessionId={currentSessionId} />
           </div>
         )}
         {activeTab === 'workflow' && workflowInfo && (
@@ -104,6 +131,9 @@ function App() {
         )}
         {activeTab === 'monitor' && currentExecutionId && (
           <ExecutionMonitor executionId={currentExecutionId} />
+        )}
+        {activeTab === 'history' && (
+          <SessionHistoryPage onNavigateToExecution={handleNavigateToExecution} />
         )}
       </main>
 

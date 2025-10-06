@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { useSession } from '../contexts/SessionContext';
-import { Upload, File, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import * as api from '../services/api';
 import type { UploadedFile } from '../types';
 
@@ -27,8 +27,7 @@ const FileUploader: React.FC = () => {
         try {
           const response = await api.uploadFiles(
             [uploadedFile.file],
-            session.id,
-            'default_user'
+            session.id
           );
 
           const metadata = response.data.files[0];

@@ -6,9 +6,10 @@ import { Search, Loader2 } from 'lucide-react';
 
 interface ResearchFormProps {
   onResearchStart: (executionId: string) => void;
+  sessionId: string | null;
 }
 
-export default function ResearchForm({ onResearchStart }: ResearchFormProps) {
+export default function ResearchForm({ onResearchStart, sessionId }: ResearchFormProps) {
   const [formData, setFormData] = useState<ResearchRequest>({
     topic: '',
     depth: 'comprehensive',
@@ -26,8 +27,9 @@ export default function ResearchForm({ onResearchStart }: ResearchFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.topic.trim()) {
-      startResearchMutation.mutate(formData);
+    if (formData.topic.trim() && sessionId) {
+      // Include session_id in the request
+      startResearchMutation.mutate({ ...formData, session_id: sessionId });
     }
   };
 

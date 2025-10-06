@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Brain, FileText, ListTodo } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import { useSession } from '../contexts/SessionContext';
 
 interface LayoutProps {

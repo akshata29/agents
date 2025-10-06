@@ -5,7 +5,7 @@ REST API endpoints for plan creation and execution.
 Built from scratch for multimodal content processing.
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, status
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, status, Request
 from typing import Optional, List
 import structlog
 
@@ -16,6 +16,7 @@ from ..models.task_models import (
 from ..services.task_orchestrator import TaskOrchestrator
 from ..services.file_handler import FileHandler
 from ..infra.settings import Settings
+from ..auth.auth_utils import get_authenticated_user_details
 
 logger = structlog.get_logger(__name__)
 
@@ -238,6 +239,7 @@ async def get_execution_status(
 
 @router.post("/execute-direct", response_model=PlanExecutionResponse)
 async def execute_direct(
+    request: Request,
     input_task: InputTask,
     background_tasks: BackgroundTasks,
     orchestrator: TaskOrchestrator = Depends(get_orchestrator)
@@ -249,15 +251,27 @@ async def execute_direct(
     workflow. The plan is created, then execution starts in the background.
     
     Args:
+        request: FastAPI request (for extracting authenticated user)
         input_task: Task with objective, file IDs, and metadata
         background_tasks: FastAPI background tasks
     
     Returns:
         Action response with plan ID and execution confirmation
     """
+    # Extract authenticated user from headers
+    user_details = get_authenticated_user_details(request.headers)
+    user_id = user_details.get("user_principal_id")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User authentication required")
+    
+    # Override user_id from authentication (ignore frontend value)
+    input_task.user_id = user_id
+    
     logger.info(
         "Direct execution via API",
-        objective=input_task.description[:100]
+        objective=input_task.description[:100],
+        user_id=user_id
     )
     
     try:

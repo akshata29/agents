@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import List, Optional
 import structlog
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from openai import AsyncAzureOpenAI
@@ -23,6 +23,8 @@ from .models.dto import (
 from .services.orchestrator import FinancialOrchestrationService
 from .infra.settings import get_settings
 from .infra.telemetry import get_telemetry
+from .auth.auth_utils import get_authenticated_user_details
+from .routers import sessions
 
 logger = structlog.get_logger(__name__)
 
@@ -86,6 +88,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(sessions.router)
+
 
 # ============= Health & Status =============
 
@@ -126,29 +131,37 @@ async def system_status():
 # ============= Orchestration Endpoints =============
 
 @app.post("/orchestration/sequential", response_model=OrchestrationResponse)
-async def run_sequential(request: SequentialResearchRequest):
+async def run_sequential(request_obj: SequentialResearchRequest, request: Request):
     """
     Execute sequential research workflow.
     
     Agents run in order: Company → SEC → Earnings → Fundamentals → Technicals → Report
     This endpoint returns immediately with a run_id and processes in the background.
+    User identity is automatically extracted from Azure EasyAuth headers.
     """
     if not orchestration_service:
         raise HTTPException(status_code=503, detail="Orchestration service not available")
     
+    # Extract user_id from authentication headers
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
+    user_id = authenticated_user.get("user_principal_id", "unknown-user")
+    user_name = authenticated_user.get("user_name", "unknown")
+    
     try:
         logger.info(
             "=== Sequential research request received ===",
-            ticker=request.ticker,
-            scope=request.scope,
-            depth=request.depth,
-            include_pdf=request.include_pdf,
-            year=request.year
+            ticker=request_obj.ticker,
+            scope=request_obj.scope,
+            depth=request_obj.depth,
+            include_pdf=request_obj.include_pdf,
+            year=request_obj.year,
+            user_id=user_id,
+            user_name=user_name
         )
         
-        # Generate run_id immediately
+        # Generate run_id immediately (include user for tracking)
         import uuid
-        run_id = f"seq-{request.ticker}-{uuid.uuid4().hex[:8]}"
+        run_id = f"seq-{request_obj.ticker}-{uuid.uuid4().hex[:8]}"
         
         # Create initial response with "running" status
         initial_response = OrchestrationResponse(
@@ -159,18 +172,19 @@ async def run_sequential(request: SequentialResearchRequest):
             steps=[],
             final_report="",
             execution_time=0.0,
-            ticker=request.ticker,
+            ticker=request_obj.ticker,
             timestamp=datetime.utcnow()
         )
         
         # Start background task for actual execution
         asyncio.create_task(execute_sequential_background(
             run_id=run_id,
-            ticker=request.ticker,
-            scope=[m.value for m in request.scope],
-            depth=request.depth.value,
-            include_pdf=request.include_pdf,
-            year=request.year
+            ticker=request_obj.ticker,
+            scope=[m.value for m in request_obj.scope],
+            depth=request_obj.depth.value,
+            include_pdf=request_obj.include_pdf,
+            year=request_obj.year,
+            user_id=user_id
         ))
         
         # Broadcast initial status
@@ -189,7 +203,8 @@ async def execute_sequential_background(
     scope: List[str],
     depth: str,
     include_pdf: bool,
-    year: Optional[int]
+    year: Optional[int],
+    user_id: str
 ):
     """Execute sequential research in background and broadcast updates."""
     import time
@@ -203,6 +218,7 @@ async def execute_sequential_background(
             include_pdf=include_pdf,
             year=year,
             run_id=run_id,  # Pass the run_id
+            user_id=user_id,  # Pass user_id for tracking
             progress_callback=broadcast_execution_update  # Pass broadcast callback for real-time updates
         )
         
@@ -213,6 +229,7 @@ async def execute_sequential_background(
             f"=== Sequential research completed ===",
             ticker=ticker,
             run_id=run_id,
+            user_id=user_id,
             status=result.status,
             duration_seconds=round(duration, 2),
             steps_count=len(result.steps)
@@ -228,23 +245,34 @@ async def execute_sequential_background(
 
 
 @app.post("/orchestration/concurrent", response_model=OrchestrationResponse)
-async def run_concurrent(request: ConcurrentResearchRequest):
+async def run_concurrent(request_obj: ConcurrentResearchRequest, request: Request):
     """
     Execute concurrent research workflow.
     
     Agents run in parallel with result aggregation.
     This endpoint returns immediately with a run_id and processes in the background.
+    User identity is automatically extracted from Azure EasyAuth headers.
     """
     if not orchestration_service:
         raise HTTPException(status_code=503, detail="Orchestration service not available")
     
+    # Extract user_id from authentication headers
+    authenticated_user = get_authenticated_user_details(request_headers=request.headers)
+    user_id = authenticated_user.get("user_principal_id", "unknown-user")
+    user_name = authenticated_user.get("user_name", "unknown")
+    
     try:
-        logger.info("Concurrent research requested",
-                    ticker=request.ticker, modules=request.modules)
+        logger.info(
+            "Concurrent research requested",
+            ticker=request_obj.ticker,
+            modules=request_obj.modules,
+            user_id=user_id,
+            user_name=user_name
+        )
         
         # Generate run_id immediately
         import uuid
-        run_id = f"con-{request.ticker}-{uuid.uuid4().hex[:8]}"
+        run_id = f"con-{request_obj.ticker}-{uuid.uuid4().hex[:8]}"
         
         # Create initial response
         initial_response = OrchestrationResponse(
@@ -255,18 +283,19 @@ async def run_concurrent(request: ConcurrentResearchRequest):
             steps=[],
             final_report="",
             execution_time=0.0,
-            ticker=request.ticker,
+            ticker=request_obj.ticker,
             timestamp=datetime.utcnow()
         )
         
         # Start background task
         asyncio.create_task(execute_concurrent_background(
             run_id=run_id,
-            ticker=request.ticker,
-            modules=[m.value for m in request.modules],
-            aggregation_strategy=request.aggregation_strategy,
-            include_pdf=request.include_pdf,
-            year=request.year
+            ticker=request_obj.ticker,
+            modules=[m.value for m in request_obj.modules],
+            aggregation_strategy=request_obj.aggregation_strategy,
+            include_pdf=request_obj.include_pdf,
+            year=request_obj.year,
+            user_id=user_id
         ))
         
         await broadcast_execution_update(run_id, "started", initial_response.model_dump())
@@ -284,7 +313,8 @@ async def execute_concurrent_background(
     modules: List[str],
     aggregation_strategy: str,
     include_pdf: bool,
-    year: Optional[int]
+    year: Optional[int],
+    user_id: str
 ):
     """Execute concurrent research in background and broadcast updates."""
     import time
@@ -298,6 +328,7 @@ async def execute_concurrent_background(
             include_pdf=include_pdf,
             year=year,
             run_id=run_id,
+            user_id=user_id,  # Pass user_id for tracking
             progress_callback=broadcast_execution_update  # Real-time updates
         )
         
@@ -308,6 +339,7 @@ async def execute_concurrent_background(
             "=== Concurrent research completed ===",
             ticker=ticker,
             run_id=run_id,
+            user_id=user_id,
             duration_seconds=round(duration, 2)
         )
         

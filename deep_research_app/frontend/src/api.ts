@@ -1,7 +1,10 @@
 import axios from 'axios';
 import type { ResearchRequest, ResearchResponse, ExecutionStatus, WorkflowInfo } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Use relative URLs in production (same domain), localhost for development
+const API_BASE_URL = import.meta.env.VITE_API_URL || (
+  window.location.hostname === 'localhost' ? 'http://localhost:8000' : ''
+);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -45,6 +48,47 @@ export const apiClient = {
   connectWebSocket: (executionId: string) => {
     const wsUrl = API_BASE_URL.replace('http', 'ws') + `/ws/research/${executionId}`;
     return new WebSocket(wsUrl);
+  },
+
+  // Session history APIs
+  getSessions: async (limit: number = 50) => {
+    const response = await api.get(`/api/sessions?limit=${limit}`);
+    return response.data;
+  },
+
+  createSession: async () => {
+    const response = await api.post('/api/sessions/create');
+    return response.data;
+  },
+
+  getSession: async (sessionId: string) => {
+    const response = await api.get(`/api/sessions/${sessionId}`);
+    return response.data;
+  },
+
+  getSessionRuns: async (sessionId: string) => {
+    const response = await api.get(`/api/sessions/${sessionId}/runs`);
+    return response.data;
+  },
+
+  getRun: async (sessionId: string, runId: string) => {
+    const response = await api.get(`/api/sessions/${sessionId}/runs/${runId}`);
+    return response.data;
+  },
+
+  searchRunsByTopic: async (topic: string) => {
+    const response = await api.get(`/api/sessions/topic/${encodeURIComponent(topic)}`);
+    return response.data;
+  },
+
+  getUserHistory: async (limit: number = 50) => {
+    const response = await api.get(`/api/sessions/user/history?limit=${limit}`);
+    return response.data;
+  },
+
+  deleteSession: async (sessionId: string) => {
+    const response = await api.delete(`/api/sessions/${sessionId}`);
+    return response.data;
   },
 };
 

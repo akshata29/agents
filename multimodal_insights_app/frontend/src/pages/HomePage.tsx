@@ -50,9 +50,9 @@ const HomePage: React.FC = () => {
     setIsExecuting(true);
 
     try {
+      // Note: user_id is now automatically extracted from Azure EasyAuth headers on the backend
       const response = await api.createAndExecutePlan(
         session.id,
-        'default_user',
         objective,
         fileIds,
         summaryType,
@@ -64,7 +64,7 @@ const HomePage: React.FC = () => {
       const plan: PlanWithSteps = {
         id: planData.plan_id,
         session_id: planData.session_id,
-        user_id: 'default_user',
+        user_id: '', // Will be populated when we fetch the full plan
         initial_goal: objective,
         summary: undefined,
         overall_status: 'in_progress',

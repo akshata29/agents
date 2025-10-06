@@ -18,7 +18,9 @@ export default function Dashboard() {
   const stats = {
     total: executions?.executions?.length || 0,
     running: executions?.executions?.filter((e: any) => e.status === 'running').length || 0,
-    completed: executions?.executions?.filter((e: any) => e.status === 'success').length || 0,
+    completed: executions?.executions?.filter((e: any) => 
+      e.status === 'success' || e.status === 'completed'
+    ).length || 0,
     failed: executions?.executions?.filter((e: any) => e.status === 'failed').length || 0,
   };
 

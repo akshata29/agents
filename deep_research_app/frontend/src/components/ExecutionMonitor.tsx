@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../api';
-import { ExecutionStatus, WebSocketMessage } from '../types';
+import { WebSocketMessage } from '../types';
 import {
   Activity,
   CheckCircle,
@@ -197,61 +197,69 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Execution Mode</p>
                 <p className="text-sm font-medium text-white">
-                  {status.metadata.execution_mode === 'workflow' ? '🔄 Workflow Engine' : '⚙️ Code-Based'}
+                  {status.metadata?.execution_mode === 'workflow' ? '🔄 Workflow Engine' : '⚙️ Code-Based'}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">{status.metadata.workflow_engine}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{status.metadata?.workflow_engine || 'N/A'}</p>
               </div>
 
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Orchestration Pattern</p>
-                <p className="text-sm font-medium text-primary-400">{status.metadata.orchestration_pattern}</p>
+                <p className="text-sm font-medium text-primary-400">{status.metadata?.orchestration_pattern || 'N/A'}</p>
               </div>
 
               <div>
                 <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Framework</p>
-                <p className="text-sm font-medium text-white">{status.metadata.framework}</p>
+                <p className="text-sm font-medium text-white">{status.metadata?.framework || 'N/A'}</p>
               </div>
 
               <div className="pt-3 border-t border-slate-700">
                 <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Execution Stats</p>
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-400">Total Agents</span>
-                    <span className="text-sm font-medium text-white">{status.metadata.agent_count}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-400">Parallel Tasks</span>
-                    <span className="text-sm font-medium text-white">{status.metadata.parallel_tasks}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-slate-400">Total Phases</span>
-                    <span className="text-sm font-medium text-white">{status.metadata.total_phases}</span>
-                  </div>
+                  {status.metadata?.agent_count && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-400">Total Agents</span>
+                      <span className="text-sm font-medium text-white">{status.metadata.agent_count}</span>
+                    </div>
+                  )}
+                  {status.metadata?.parallel_tasks && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-400">Parallel Tasks</span>
+                      <span className="text-sm font-medium text-white">{status.metadata.parallel_tasks}</span>
+                    </div>
+                  )}
+                  {status.metadata?.total_phases && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-400">Total Phases</span>
+                      <span className="text-sm font-medium text-white">{status.metadata.total_phases}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-700">
-                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Agents Used</p>
-                <div className="flex flex-wrap gap-1">
-                  {status.metadata.agents_used.map((agent, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-1 text-xs bg-primary-500/20 text-primary-300 rounded border border-primary-500/30"
-                    >
-                      {agent}
-                    </span>
-                  ))}
+              {status.metadata?.agents_used && Array.isArray(status.metadata.agents_used) && status.metadata.agents_used.length > 0 && (
+                <div className="pt-3 border-t border-slate-700">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Agents Used</p>
+                  <div className="flex flex-wrap gap-1">
+                    {status.metadata.agents_used.map((agent, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-1 text-xs bg-primary-500/20 text-primary-300 rounded border border-primary-500/30"
+                      >
+                        {agent}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {status.metadata.pattern_details && (
+              {status.metadata?.pattern_details && typeof status.metadata.pattern_details === 'object' && (
                 <div className="pt-3 border-t border-slate-700">
                   <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Pattern Details</p>
                   <div className="space-y-1.5">
                     {Object.entries(status.metadata.pattern_details).map(([key, value]) => (
                       <div key={key} className="text-xs">
                         <span className="text-slate-500">{key.replace(/_/g, ' ')}:</span>{' '}
-                        <span className="text-slate-300">{value}</span>
+                        <span className="text-slate-300">{String(value)}</span>
                       </div>
                     ))}
                   </div>
@@ -315,6 +323,125 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
           </div>
         </div>
       </div>
+
+      {/* Task Execution Details - Shows detailed outputs for each task/phase */}
+      {status.result && (status.result.core_concepts || status.result.research_plan || status.result.final_report) && (
+        <div className="card border-2 border-primary-500/30">
+          <div className="card-header">
+            <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <FileText className="w-5 h-5 text-primary-500" />
+              <span>Detailed Research Outputs</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">Expand each section to view detailed research findings</p>
+          </div>
+          <div className="card-body space-y-3">
+            {/* Research Plan */}
+            {status.result.research_plan && status.result.research_plan.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-primary-500/50 transition-all">
+                  <span className="font-semibold text-primary-400">📋 Research Plan</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.research_plan}
+                  </pre>
+                </div>
+              </details>
+            )}
+
+            {/* Core Concepts */}
+            {status.result.core_concepts && status.result.core_concepts.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-primary-500/50 transition-all">
+                  <span className="font-semibold text-blue-400">🧠 Core Concepts & Definitions</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.core_concepts}
+                  </pre>
+                </div>
+              </details>
+            )}
+
+            {/* Current State */}
+            {status.result.current_state && status.result.current_state.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-primary-500/50 transition-all">
+                  <span className="font-semibold text-green-400">📊 Current State & Recent Developments</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.current_state}
+                  </pre>
+                </div>
+              </details>
+            )}
+
+            {/* Applications */}
+            {status.result.applications && status.result.applications.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-primary-500/50 transition-all">
+                  <span className="font-semibold text-yellow-400">🔧 Practical Applications & Use Cases</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.applications}
+                  </pre>
+                </div>
+              </details>
+            )}
+
+            {/* Challenges */}
+            {status.result.challenges && status.result.challenges.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-primary-500/50 transition-all">
+                  <span className="font-semibold text-orange-400">⚠️ Challenges & Limitations</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.challenges}
+                  </pre>
+                </div>
+              </details>
+            )}
+
+            {/* Future Trends */}
+            {status.result.future_trends && status.result.future_trends.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-primary-500/50 transition-all">
+                  <span className="font-semibold text-purple-400">🔮 Future Trends & Predictions</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.future_trends}
+                  </pre>
+                </div>
+              </details>
+            )}
+
+            {/* Final Report (for workflow mode) */}
+            {status.result.final_report && status.result.final_report.trim() && (
+              <details className="group">
+                <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-success-500/50 transition-all">
+                  <span className="font-semibold text-success-400">📝 Final Research Report</span>
+                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                </summary>
+                <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
+                    {status.result.final_report}
+                  </pre>
+                </div>
+              </details>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Results */}
       {(status.status === 'success' || status.status === 'completed') && status.result && (

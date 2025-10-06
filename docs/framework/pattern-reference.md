@@ -1,4 +1,4 @@
-# Magentic Foundation Framework - Complete Pattern Reference
+# Foundation Framework - Complete Pattern Reference
 
 **Quick reference for all available orchestration patterns**
 

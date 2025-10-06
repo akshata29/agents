@@ -2,7 +2,7 @@
 
 ## 🎯 Project Summary
 
-A **production-grade multi-agent financial research application** with dynamic planning and human-in-the-loop approval workflow that combines:
+A **multi-agent financial research application** with dynamic planning and human-in-the-loop approval workflow that combines:
 
 - **Dynamic Planning** using Framework's DynamicPlanner (ReAct pattern)
 - **Human Approval Workflow** for task orchestration

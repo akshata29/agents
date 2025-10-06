@@ -6,7 +6,7 @@ with dynamic planning, MCP tool integration, workflow management, and enterprise
 """
 
 __version__ = "1.0.0"
-__author__ = "Magentic Foundation Team"
+__author__ = "Foundation Team"
 __description__ = "Enterprise Multi-Agent Orchestration Framework"
 
 # Core imports for easy access

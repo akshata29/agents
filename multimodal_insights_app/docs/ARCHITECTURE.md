@@ -407,4 +407,4 @@ Application Insights
 
 ---
 
-This architecture provides a solid foundation for a production-grade multimodal AI agent application with room for growth and enhancement.
+This architecture provides a solid foundation for a multimodal AI agent application with room for growth and enhancement.

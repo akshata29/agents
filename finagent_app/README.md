@@ -1,6 +1,6 @@
 # Financial Research Multi-Agent Application
 
-A production-grade multi-agent financial research system built on the Microsoft Agent Framework, combining the agent taxonomy from **finagentsk** with orchestration patterns and UI/UX from the **agents framework** and **deep_research_app** reference.
+A multi-agent financial research system built on the Microsoft Agent Framework, combining the agent taxonomy from **finagentsk** with orchestration patterns and UI/UX from the **agents framework** and **deep_research_app** reference.
 
 ## Overview
 
@@ -311,7 +311,7 @@ npm test
 
 ## Deployment
 
-See `docs/DEPLOYMENT.md` for production deployment guide covering:
+See `docs/DEPLOYMENT.md` for deployment guide covering:
 - Azure App Service deployment
 - Container deployment
 - Environment configuration

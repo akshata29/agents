@@ -1,5 +1,5 @@
 """
-Workflow Usage Examples - Magentic Foundation Framework
+Workflow Usage Examples - Foundation Framework
 
 This module demonstrates how to use YAML-based workflows for
 declarative multi-agent orchestration with the framework.
@@ -318,7 +318,7 @@ async def workflow_monitoring_example():
 
 def print_usage_help():
     """Print usage help and available examples."""
-    print("Magentic Foundation Framework - Workflow Usage Examples")
+    print("Foundation Framework - Workflow Usage Examples")
     print("=" * 60)
     print()
     print("Available examples:")

@@ -1,5 +1,5 @@
 """
-Main Application - Magentic Foundation Framework
+Main Application - Foundation Framework
 
 Complete enterprise multi-agent framework with orchestration, workflows,
 MCP integration, security, monitoring, and REST API.
@@ -33,14 +33,14 @@ logger = structlog.get_logger(__name__)
 
 class MagenticFoundation:
     """
-    Main Magentic Foundation Framework Application.
+    Main Foundation Framework Application.
     
     Coordinates all framework components including orchestration, workflows,
     MCP integration, security, monitoring, and API services.
     """
 
     def __init__(self, config_path: Optional[Path] = None):
-        """Initialize Magentic Foundation Framework."""
+        """Initialize Foundation Framework."""
         # Load settings
         self.settings = Settings(_env_file=config_path)
         
@@ -79,14 +79,14 @@ class MagenticFoundation:
         self._initialized = False
         self._shutdown_event = asyncio.Event()
         
-        logger.info("MagenticFoundation initialized", config_path=str(config_path))
+        logger.info("Foundation initialized", config_path=str(config_path))
 
     async def initialize(self) -> None:
         """Initialize all framework components."""
         if self._initialized:
             return
         
-        logger.info("Initializing Magentic Foundation Framework")
+        logger.info("Initializing Foundation Framework")
         
         try:
             # Initialize core services first
@@ -144,16 +144,16 @@ class MagenticFoundation:
             await self.api_service.initialize()
             
             self._initialized = True
-            logger.info("Magentic Foundation Framework initialization complete")
+            logger.info("Foundation Framework initialization complete")
             
         except Exception as e:
-            logger.error("Failed to initialize Magentic Foundation Framework", error=str(e))
+            logger.error("Failed to initialize Foundation Framework", error=str(e))
             await self.shutdown()
             raise
 
     async def shutdown(self) -> None:
         """Shutdown all framework components."""
-        logger.info("Shutting down Magentic Foundation Framework")
+        logger.info("Shutting down Foundation Framework")
         
         # Shutdown in reverse order
         components = [
@@ -178,7 +178,7 @@ class MagenticFoundation:
                     logger.error("Error shutting down component", component=name, error=str(e))
         
         self._shutdown_event.set()
-        logger.info("Magentic Foundation Framework shutdown complete")
+        logger.info("Foundation Framework shutdown complete")
 
     async def run_api_server(
         self,
@@ -237,7 +237,7 @@ class MagenticFoundation:
         if not self._initialized:
             await self.initialize()
         
-        logger.info("Magentic Foundation Framework running in CLI mode")
+        logger.info("Foundation Framework running in CLI mode")
         logger.info("Press Ctrl+C to shutdown")
         
         # Setup signal handlers
@@ -319,7 +319,7 @@ class MagenticFoundation:
 
 # Application factory function
 def create_app(config_path: Optional[Path] = None) -> MagenticFoundation:
-    """Create Magentic Foundation application instance."""
+    """Create Foundation application instance."""
     return MagenticFoundation(config_path)
 
 
@@ -328,7 +328,7 @@ async def main():
     """Main CLI entry point."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Magentic Foundation Framework")
+    parser = argparse.ArgumentParser(description="Foundation Framework")
     parser.add_argument("--config", type=Path, help="Configuration file path")
     parser.add_argument("--mode", choices=["api", "cli"], default="api", help="Run mode")
     parser.add_argument("--host", default="127.0.0.1", help="API server host")

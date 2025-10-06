@@ -267,7 +267,6 @@ result = await orchestrator.execute_react(
 - ✅ Type-safe message passing
 - ✅ Complex graph topologies
 - ✅ Fan-out/fan-in patterns
-- ✅ Production-grade systems
 - ✅ OpenTelemetry observability
 
 **Architecture:**
@@ -480,7 +479,7 @@ async def execute_maf_workflow(topic: str, execution_id: str):
 **Pros:**
 - ✅ Type-safe messaging
 - ✅ Advanced graph patterns
-- ✅ Production-ready observability
+- ✅ Observability
 - ✅ Clear separation of concerns
 
 **Cons:**

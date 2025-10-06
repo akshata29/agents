@@ -1,7 +1,7 @@
 """
 Core Framework Components
 
-This module contains the fundamental building blocks of the Magentic Foundation Framework.
+This module contains the fundamental building blocks of the Foundation Framework.
 """
 
 from .orchestrator import MagenticOrchestrator

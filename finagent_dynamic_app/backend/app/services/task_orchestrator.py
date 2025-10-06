@@ -1,7 +1,7 @@
 """
 Task Orchestrator Service
 
-Bridges the Magentic Framework's orchestration patterns with our CosmosDB persistence layer.
+Bridges the Framework's orchestration patterns with our CosmosDB persistence layer.
 
 Pattern Usage:
 - Planning: ReActPattern via orchestrator.execute() - Iterative reasoning loop for 

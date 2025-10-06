@@ -1,5 +1,5 @@
 """
-Magentic Orchestrator - Main Orchestration Engine
+Orchestrator - Main Orchestration Engine
 
 This is the core orchestration engine that coordinates multi-agent workflows,
 manages execution patterns, and integrates with MCP tools for dynamic capabilities.
@@ -71,7 +71,7 @@ class OrchestrationPattern(BaseModel):
 
 class MagenticOrchestrator:
     """
-    Main orchestration engine for the Magentic Foundation Framework.
+    Main orchestration engine for the Foundation Framework.
     
     Coordinates multi-agent workflows, manages execution patterns, and provides
     enterprise-grade capabilities including monitoring, security, and MCP integration.
@@ -98,13 +98,13 @@ class MagenticOrchestrator:
         self._execution_lock = asyncio.Lock()
         
         logger.info(
-            "MagenticOrchestrator initialized",
+            "Orchestrator initialized",
             settings=self.settings.model_dump(exclude_secrets=True)
         )
 
     async def initialize(self) -> None:
         """Initialize the orchestrator and its dependencies."""
-        logger.info("Initializing MagenticOrchestrator")
+        logger.info("Initializing rchestrator")
         
         # Initialize components
         await self.agent_registry.initialize()
@@ -114,11 +114,11 @@ class MagenticOrchestrator:
         # Register built-in agents
         await self._register_builtin_agents()
         
-        logger.info("MagenticOrchestrator initialization complete")
+        logger.info("Orchestrator initialization complete")
 
     async def shutdown(self) -> None:
         """Shutdown the orchestrator and cleanup resources."""
-        logger.info("Shutting down MagenticOrchestrator")
+        logger.info("Shutting down Orchestrator")
         
         # Cancel active executions
         for execution_id in list(self._active_executions.keys()):
@@ -128,7 +128,7 @@ class MagenticOrchestrator:
         await self.mcp_client.shutdown()
         await self.observability.shutdown()
         
-        logger.info("MagenticOrchestrator shutdown complete")
+        logger.info("Orchestrator shutdown complete")
 
     async def execute(
         self,

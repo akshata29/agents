@@ -119,7 +119,7 @@ Learn parallel execution:
 
 ## 🔗 External Resources
 
-- [Magentic Foundation Framework](../../../framework/README.md) - Core framework
+- [Foundation Framework](../../../framework/README.md) - Core framework
 - [Pattern Reference](../../../docs/framework/pattern-reference.md) - All 7 orchestration patterns
 - [Microsoft Agent Framework](https://microsoft.github.io/autogen/) - MAF documentation
 - [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
@@ -170,6 +170,6 @@ Learn parallel execution:
 ---
 
 **Last Updated:** October 2025  
-**Maintained By:** Magentic Foundation Framework Team
+**Maintained By:** Foundation Framework Team
 
 > Clean, focused documentation for professional developers.

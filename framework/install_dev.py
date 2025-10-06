@@ -10,7 +10,7 @@ from pathlib import Path
 
 def main():
     """Install the framework in development mode."""
-    print("🔧 Installing Magentic Foundation Framework...")
+    print("🔧 Installing Foundation Framework...")
     
     try:
         # Install in development mode

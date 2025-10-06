@@ -24,7 +24,7 @@ async def research_topic(topic: str, depth: str = "comprehensive"):
     print()
     
     # Initialize framework
-    print("[Initializing Magentic Foundation Framework...]")
+    print("[Initializing Foundation Framework...]")
     app = MagenticApp()
     await app.initialize()
     print("[OK] Framework initialized")

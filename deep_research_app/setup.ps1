@@ -54,7 +54,7 @@ Write-Host "Step 1: Framework Setup" -ForegroundColor Cyan
 Write-Host "==================================" -ForegroundColor Cyan
 
 # Install framework
-Write-Host "Installing Magentic Foundation Framework..." -ForegroundColor Yellow
+Write-Host "Installing Foundation Framework..." -ForegroundColor Yellow
 Push-Location $FrameworkDir
 try {
     python -m pip install -e . --quiet

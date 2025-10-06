@@ -10,7 +10,7 @@ Microsoft Agent Framework (MAF) is the next-generation framework for building AI
 - **🤖 Agent-First**: Simple abstractions for single and multi-agent patterns  
 - **🔄 Workflow Control**: Explicit control over multi-agent execution paths
 - **🔗 Extensible**: Robust state management for long-running and human-in-the-loop scenarios
-- **🏢 Production-Grade**: Built by the same teams that created Semantic Kernel and AutoGen
+
 
 ## 🏗 Core Architecture
 
@@ -285,9 +285,9 @@ MAF provides built-in telemetry and monitoring:
 
 ## 🔜 Next Steps
 
-Now that you understand MAF fundamentals, let's explore how our Magentic Foundation Framework extends these capabilities:
+Now that you understand MAF fundamentals, let's explore how our Foundation Framework extends these capabilities:
 
-[→ Continue to Magentic Foundation Framework](./02-framework-architecture.md)
+[→ Continue to Foundation Framework](./02-framework-architecture.md)
 
 ---
 

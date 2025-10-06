@@ -200,7 +200,7 @@ class Settings(BaseSettings):
     """
     
     # Application metadata
-    app_name: str = Field(default="Magentic Foundation Framework", description="Application name")
+    app_name: str = Field(default="Foundation Framework", description="Application name")
     version: str = Field(default="1.0.0", description="Application version")
     environment: str = Field(default="development", description="Environment (development/staging/production)")
     debug: bool = Field(default=False, description="Debug mode")

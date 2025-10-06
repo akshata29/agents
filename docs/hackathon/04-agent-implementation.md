@@ -36,7 +36,7 @@ class YourAgent(BaseAgent):
 
 ## 🏗 Complete Agent Implementation Template
 
-Here's a complete template for implementing a production-ready agent:
+Here's a complete template for implementing a agent:
 
 ```python
 import asyncio

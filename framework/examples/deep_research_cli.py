@@ -1,7 +1,7 @@
 """
 Deep Research CLI - Comprehensive Multi-Agent Research Workflow
 
-This script executes a complete deep research workflow using the Magentic Foundation Framework.
+This script executes a complete deep research workflow using the Foundation Framework.
 It demonstrates real agent orchestration with Azure OpenAI to produce comprehensive research reports.
 
 Usage:
@@ -48,7 +48,7 @@ if str(parent_dir) not in sys.path:
 try:
     from magentic_foundation import create_app, MagenticFoundation
     from magentic_foundation.agents.base import BaseAgent, AgentMessage, AgentResponse
-    print("[OK] Successfully imported Magentic Foundation Framework")
+    print("[OK] Successfully imported Foundation Framework")
 except ImportError as e:
     print(f"[ERROR] Failed to import framework: {e}")
     sys.exit(1)
@@ -206,7 +206,7 @@ async def execute_deep_research(
     print()
     
     # Initialize framework
-    print("[Initializing Magentic Foundation Framework...]")
+    print("[Initializing Foundation Framework...]")
     app = create_app()
     await app.initialize()
     print("[OK] Framework initialized\n")

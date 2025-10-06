@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-The Magentic Foundation Framework provides **7 orchestration patterns** for different multi-agent scenarios. Each pattern is optimized for specific use cases and can be combined to create sophisticated workflows.
+The Foundation Framework provides **7 orchestration patterns** for different multi-agent scenarios. Each pattern is optimized for specific use cases and can be combined to create sophisticated workflows.
 
 ## 📊 Pattern Comparison Matrix
 

@@ -6,7 +6,7 @@ This guide provides specific implementation strategies for each hackathon use ca
 
 ## 🆕 What's New: Advanced Reference Applications
 
-We now have **4 production-grade reference applications** that demonstrate different aspects of the framework:
+We now have **4 Reference applications** that demonstrate different aspects of the framework:
 
 ### 1. **Deep Research App** - Three Execution Paradigms
 - Demonstrates YAML, Code-based, and MAF Workflows

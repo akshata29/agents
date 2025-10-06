@@ -48,7 +48,7 @@ function App() {
               <Brain className="w-8 h-8 text-primary-500" />
               <div>
                 <h1 className="text-2xl font-bold text-white">Deep Research</h1>
-                <p className="text-sm text-slate-400">Powered by Magentic Foundation Framework</p>
+                <p className="text-sm text-slate-400">Powered by Foundation Framework</p>
               </div>
             </div>
             <div className="flex items-center space-x-2 text-sm">
@@ -151,7 +151,7 @@ function App() {
               >
                 Microsoft Agent Framework
               </a>{' '}
-              and Magentic Foundation
+              and Foundation Framework
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-# Magentic Foundation Framework - Package Configuration
+# Foundation Framework - Package Configuration
 from setuptools import setup, find_packages
 from pathlib import Path
 
@@ -30,7 +30,7 @@ else:
 setup(
     name="magentic-foundation",
     version="1.0.0",
-    author="Magentic Foundation Team",
+    author="Foundation Team",
     author_email="team@magentic-foundation.com",
     description="Enterprise Multi-Agent Orchestration Framework",
     long_description=long_description,

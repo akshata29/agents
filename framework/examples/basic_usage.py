@@ -1,5 +1,5 @@
 """
-Basic Usage Examples for Magentic Foundation Framework
+Basic Usage Examples for Foundation Framework
 
 This module provides simple examples demonstrating core functionality
 of the framework including orchestration patterns and agent usage.
@@ -288,7 +288,7 @@ def print_usage_help():
 
 def print_usage_help():
     """Print usage help for the examples."""
-    print("Magentic Foundation Framework - Basic Usage Examples")
+    print("Foundation Framework - Basic Usage Examples")
     print("=" * 60)
     print()
     print("Available examples:")

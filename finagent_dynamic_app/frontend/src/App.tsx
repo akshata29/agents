@@ -216,7 +216,7 @@ function AppContent() {
         <div className="px-6 py-4">
           <div className="flex items-center justify-between text-sm text-slate-400">
             <div>
-              Powered by Microsoft Agent Framework & Magentic Foundation
+              Powered by Microsoft Agent Framework & Foundation Framework
             </div>
             <div>
               v2.0.0 | Dynamic Planning

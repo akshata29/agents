@@ -1181,7 +1181,7 @@ spec:
 This advanced topics guide provides the foundation for taking your agent framework from development to production. Focus on:
 
 1. **Security First**: Implement proper authentication, authorization, and data protection
-2. **Observability**: Comprehensive monitoring and logging for production operations  
+2. **Observability**: Comprehensive monitoring and logging for operations  
 3. **Performance**: Optimize for scalability and cost-effectiveness
 4. **Reliability**: Build robust error handling and recovery mechanisms
 
@@ -1190,17 +1190,6 @@ For continued learning:
 - [Development Guide](./07-development-guide.md) - Practical implementation steps
 - [Reference Applications](./05-reference-apps.md) - Real-world implementation examples
 
----
-
-## 📚 Additional Resources
-
-### Production Checklist
-- [ ] Security audit completed
-- [ ] Performance testing passed
-- [ ] Monitoring and alerting configured
-- [ ] Disaster recovery plan established
-- [ ] Documentation updated
-- [ ] Team training completed
 
 ### Recommended Tools
 - **Monitoring**: Prometheus, Grafana, Application Insights

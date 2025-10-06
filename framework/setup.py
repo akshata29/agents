@@ -1,6 +1,6 @@
-# Magentic Foundation Framework - Setup Script
+# Foundation Framework - Setup Script
 
-"""Setup and configuration script for the Magentic Foundation Framework."""
+"""Setup and configuration script for the Foundation Framework."""
 
 import os
 import sys
@@ -131,7 +131,7 @@ def setup_git_hooks():
         pre_commit_hook = hooks_dir / "pre-commit"
         
         hook_content = """#!/bin/sh
-# Magentic Foundation pre-commit hook
+# Foundation pre-commit hook
 
 echo "Running pre-commit checks..."
 
@@ -241,7 +241,7 @@ def print_next_steps():
 
 def main():
     """Main setup function."""
-    print("🚀 Magentic Foundation Framework Setup")
+    print("🚀 Foundation Framework Setup")
     print("=" * 40)
     
     # Run setup steps

@@ -150,7 +150,7 @@ class MCPServer:
         
         # Server info
         self.server_info = MCPServerInfo(
-            name="Magentic Foundation MCP Server",
+            name="Foundation MCP Server",
             version="1.0.0",
             capabilities=MCPServerCapabilities(
                 tools={"listChanged": True},

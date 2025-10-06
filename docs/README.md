@@ -1,8 +1,8 @@
-# Magentic Foundation Framework Documentation
+# Foundation Framework Documentation
 
 ## Overview
 
-The Magentic Foundation Framework is an enterprise-grade, production-ready orchestration framework built on top of Microsoft Agent Framework. It provides advanced multi-agent coordination, execution patterns, security controls, and monitoring capabilities for building sophisticated AI applications.
+The Foundation Framework is an enterprise-grade, orchestration framework built on top of Microsoft Agent Framework. It provides advanced multi-agent coordination, execution patterns, security controls, and monitoring capabilities for building sophisticated AI applications.
 
 ## Documentation Structure
 
@@ -41,7 +41,7 @@ The Magentic Foundation Framework is an enterprise-grade, production-ready orche
 ## Key Features
 
 ### Framework Core
-- **Enterprise Orchestration**: Production-ready multi-agent coordination
+- **Enterprise Orchestration**: Multi-agent coordination
 - **Microsoft Agent Framework Integration**: Full MAF compliance with enhancements
 - **7 Orchestration Patterns**: Sequential, Concurrent, ReAct, Group Chat, Handoff, Hierarchical, MAF Workflows
 - **Security & Observability**: Built-in security controls and OpenTelemetry-based observability
@@ -60,7 +60,7 @@ The Magentic Foundation Framework is an enterprise-grade, production-ready orche
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 Magentic Foundation Framework                │
+│                 Foundation Framework                │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
@@ -93,8 +93,8 @@ The Magentic Foundation Framework is an enterprise-grade, production-ready orche
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/magentic-foundation-framework.git
-cd magentic-foundation-framework
+git clone https://github.com/yourusername/foundation-framework.git
+cd foundation-framework
 
 # Install dependencies
 pip install -e .
@@ -114,8 +114,3 @@ We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md
 
 [Your License Here]
 
-## Support
-
-- **Documentation**: [https://docs.magentic-framework.com](https://docs.magentic-framework.com)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/magentic-foundation-framework/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/magentic-foundation-framework/discussions)

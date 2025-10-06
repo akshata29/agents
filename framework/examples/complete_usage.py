@@ -1,5 +1,5 @@
 """
-Complete Usage Example - Magentic Foundation Framework
+Complete Usage Example - Foundation Framework
 
 This example demonstrates the full capabilities of the framework including:
 - Multi-agent orchestration with different patterns
@@ -58,7 +58,7 @@ except ImportError as e:
 
 async def comprehensive_example():
     """Comprehensive example showcasing all framework capabilities."""
-    print("🚀 Magentic Foundation Framework - Comprehensive Example")
+    print("🚀 Foundation Framework - Comprehensive Example")
     print("=" * 60)
     
     # 1. Initialize the framework
@@ -91,7 +91,7 @@ async def comprehensive_example():
         print("\n7. Security Features...")
         await demonstrate_security(app)
         
-        print("\n🎉 SUCCESS! Magentic Foundation Framework is fully operational!")
+        print("\n🎉 SUCCESS! Foundation Framework is fully operational!")
         print("\n✅ All tests completed successfully")
         print("\n📖 For complete examples with real agent execution, see:")
         print("   • agent_framework_patterns/sequential/step1_sequential.py")
@@ -474,7 +474,7 @@ redis:
 
 async def main():
     """Main example runner."""
-    print("🎯 Magentic Foundation Framework Examples")
+    print("🎯 Foundation Framework Examples")
     print("=========================================")
     
     # Create sample config

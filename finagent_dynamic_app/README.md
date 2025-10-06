@@ -1,6 +1,6 @@
 # Financial Research Multi-Agent Application
 
-> **Production-grade AI-powered financial research system** with dynamic planning, human-in-the-loop approval, and multi-agent orchestration for comprehensive equity analysis.
+> **AI-powered financial research system** with dynamic planning, human-in-the-loop approval, and multi-agent orchestration for comprehensive equity analysis.
 
 ![Financial Research App](docs/images/homepage_research.png)
 

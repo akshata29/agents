@@ -1,12 +1,12 @@
 # Deep Research Backend API
 
-FastAPI backend for the Deep Research application, built on the Magentic Foundation Framework.
+FastAPI backend for the Deep Research application, built on the Foundation Framework.
 
 ## Features
 
 - **REST API** for workflow execution and status monitoring
 - **WebSocket** for real-time progress updates
-- **Framework Integration** with Magentic Foundation agents and workflows
+- **Framework Integration** with Foundation agents and workflows
 - **CORS Support** for React frontend integration
 
 ## Setup
@@ -14,7 +14,7 @@ FastAPI backend for the Deep Research application, built on the Magentic Foundat
 ### Prerequisites
 
 - Python 3.11+
-- Magentic Foundation Framework installed
+- Foundation Framework installed
 
 ### Installation
 

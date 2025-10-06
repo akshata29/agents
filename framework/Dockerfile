@@ -1,4 +1,4 @@
-# Magentic Foundation Framework - Docker Configuration
+# Foundation Framework - Docker Configuration
 
 FROM python:3.11-slim
 

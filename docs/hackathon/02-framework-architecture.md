@@ -2,7 +2,7 @@
 
 ## 🎯 Overview
 
-The Magentic Foundation Framework is an enterprise-grade multi-agent orchestration layer built **on top** of Microsoft Agent Framework (MAF). It extends MAF with production-ready capabilities including advanced orchestration patterns, security, monitoring, and enterprise integrations.
+The Foundation Framework is an enterprise-grade multi-agent orchestration layer built **on top** of Microsoft Agent Framework (MAF). It extends MAF with capabilities including advanced orchestration patterns, security, monitoring, and enterprise integrations.
 
 ## 🏗 Layered Architecture
 
@@ -14,7 +14,7 @@ graph TB
         A3[Your Hackathon App]
     end
     
-    subgraph "Magentic Foundation Framework"
+    subgraph "Foundation Framework"
         subgraph "Orchestration Layer"
             B1[MagenticOrchestrator]
             B2[Pattern Engine]
@@ -516,6 +516,6 @@ Now let's dive deep into the 7 orchestration patterns available in the framework
 The framework is demonstrated in two reference applications:
 
 - **Deep Research App**: Showcases all three execution paradigms
-- **Financial Research App**: Production-grade financial analysis with dynamic planning
+- **Financial Research App**: Financial analysis with dynamic planning
 
 Both applications provide complete examples of framework integration and best practices.

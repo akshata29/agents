@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Magentic Foundation Team", email = "team@magenticfoundation.com"}
+    {name = "Foundation Team", email = "team@magenticfoundation.com"}
 ]
 keywords = ["ai", "agents", "orchestration", "microsoft-agent-framework", "mcp", "enterprise"]
 classifiers = [

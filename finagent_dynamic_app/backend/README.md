@@ -4,7 +4,7 @@ Backend API for multi-agent financial research with dynamic planning and approva
 
 ## Architecture
 
-This implementation uses the **Magentic Foundation Framework** for orchestration:
+This implementation uses the **Foundation Framework** for orchestration:
 
 - **DynamicPlanner** - Creates execution plans using ReAct pattern
 - **GroupChatPattern** - Executes approved steps via multi-agent collaboration  
@@ -15,7 +15,7 @@ This implementation uses the **Magentic Foundation Framework** for orchestration
 
 ✅ **Dynamic Plan Generation** - AI creates structured plans from natural language objectives
 ✅ **Approval Workflow** - Human approval required before executing each step
-✅ **Framework Integration** - Uses existing Magentic patterns (no duplication!)
+✅ **Framework Integration** - Uses existing patterns (no duplication!)
 ✅ **CosmosDB Persistence** - Session-partitioned storage for plans and messages
 ✅ **Microsoft Agent Framework** - Leverages MAF for agent execution
 
@@ -53,7 +53,7 @@ python -m venv venv
 # Install packages
 pip install -r requirements.txt
 
-# Install Magentic Framework (from parent directory)
+# Install Framework (from parent directory)
 cd ..\..\framework
 pip install -e .
 cd ..\finagent_dynamic_app\backend
@@ -205,7 +205,7 @@ POST /api/approve_step
 
 ## Framework Integration
 
-This app **uses** the Magentic Framework, it doesn't duplicate it:
+This app **uses** the Framework, it doesn't duplicate it:
 
 | Component | Framework Module | Usage |
 |-----------|-----------------|-------|

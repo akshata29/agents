@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Magentic Foundation Framework is built on top of **Microsoft Agent Framework (MAF)**, leveraging its core capabilities while adding enterprise-grade orchestration, security, and monitoring features. This document explains how we integrate with MAF and what enhancements we provide.
+The Foundation Framework is built on top of **Microsoft Agent Framework (MAF)**, leveraging its core capabilities while adding enterprise-grade orchestration, security, and monitoring features. This document explains how we integrate with MAF and what enhancements we provide.
 
 ## Microsoft Agent Framework Fundamentals
 
@@ -18,7 +18,7 @@ Microsoft Agent Framework is a Python framework for building AI agents that can:
 
 #### 1. AgentProtocol / BaseAgent
 
-All custom agents in Magentic Framework implement MAF's `BaseAgent` interface:
+All custom agents in Framework implement MAF's `BaseAgent` interface:
 
 ```python
 from agent_framework import BaseAgent, AgentRunResponse, ChatMessage
@@ -135,12 +135,12 @@ for event in workflow_run:  # Regular for loop, not async for
 - `ExecutorCompletedEvent` - Agent finished
 - `WorkflowOutputEvent` - Final workflow output with all messages
 
-## Magentic Framework Enhancements
+## Framework Enhancements
 
 ### 1. Orchestrator Layer
 
 **What MAF Provides:** Basic workflow builders
-**What Magentic Adds:** High-level orchestration with pattern abstraction
+**What Framework Adds:** High-level orchestration with pattern abstraction
 
 ```python
 from framework.core.orchestrator import MagenticOrchestrator
@@ -172,7 +172,7 @@ result = await orchestrator.execute(
 ### 2. Agent Registry
 
 **What MAF Provides:** Agent instances
-**What Magentic Adds:** Centralized lifecycle management
+**What Framework Adds:** Centralized lifecycle management
 
 ```python
 from framework.core.registry import AgentRegistry
@@ -203,7 +203,7 @@ agents = await registry.list_agents()
 ### 3. ReAct Pattern
 
 **What MAF Provides:** Sequential and Concurrent patterns
-**What Magentic Adds:** ReAct (Reasoning + Acting) pattern
+**What Framework Adds:** ReAct (Reasoning + Acting) pattern
 
 ```python
 from framework.patterns.react import ReactPattern
@@ -231,7 +231,7 @@ result = await orchestrator.execute(
 ### 4. Security Module
 
 **What MAF Provides:** None
-**What Magentic Adds:** Authentication, authorization, audit
+**What Framework Adds:** Authentication, authorization, audit
 
 ```python
 from framework.core.security import SecurityManager
@@ -256,7 +256,7 @@ await security.audit_log(
 ### 5. Monitoring & Observability
 
 **What MAF Provides:** None
-**What Magentic Adds:** Metrics, tracing, performance analytics
+**What Framework Adds:** Metrics, tracing, performance analytics
 
 ```python
 from framework.core.monitoring import MonitoringService
@@ -274,7 +274,7 @@ metrics = await monitoring.get_metrics()
 ### 6. Workflow Engine (YAML)
 
 **What MAF Provides:** Programmatic workflow building
-**What Magentic Adds:** Declarative YAML-based workflows
+**What Framework Adds:** Declarative YAML-based workflows
 
 ```yaml
 # workflows/research.yaml
@@ -531,12 +531,11 @@ text = message.content  # Doesn't exist
 - Message structures and conversation threading
 - Workflow execution engine
 
-**Magentic Foundation Framework adds:**
+**Foundation Framework adds:**
 - High-level orchestration patterns
 - Agent registry and lifecycle management
 - Security and monitoring
 - ReAct and advanced patterns
 - YAML workflow engine
-- Production-ready features
 
 Together, they provide a complete platform for building enterprise AI agent applications.

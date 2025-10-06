@@ -1,6 +1,6 @@
 # Deep Research Application
 
-> A production-ready deep research application showcasing three execution modes built on the **Magentic Foundation Framework**.
+> A deep research application showcasing three execution modes built on the **Foundation Framework**.
 
 [![Framework](https://img.shields.io/badge/Framework-Magentic%20v1.0-blue.svg)](../../framework/)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI-green.svg)](./backend/)
@@ -751,7 +751,7 @@ After exploring the application, consider:
 
 ## 📖 Related Resources
 
-- [Magentic Foundation Framework](../../framework/README.md) - Core framework documentation
+- [Foundation Framework](../../framework/README.md) - Core framework documentation
 - [Pattern Reference](../../docs/framework/pattern-reference.md) - All 7 orchestration patterns
 - [Microsoft Agent Framework](https://microsoft.github.io/autogen/) - Upstream MAF documentation
 - [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
@@ -766,14 +766,14 @@ Contributions are welcome! This application demonstrates best practices for:
 - Multi-mode execution architectures
 - Real-time WebSocket communication
 - Type-safe API contracts (TypeScript + Pydantic)
-- Production-ready error handling
+- Error handling
 - Comprehensive observability
 
 ---
 
 ## 📄 License
 
-MIT License - Part of the Magentic Foundation Framework
+MIT License - Part of the Foundation Framework
 
 ---
 
@@ -788,6 +788,6 @@ For questions or issues:
 
 ---
 
-**Built with ❤️ using the Magentic Foundation Framework**
+**Built with ❤️ using the Foundation Framework**
 
 > Demonstrating the power of flexible multi-agent orchestration with three distinct execution modes: YAML, Code-Based, and MAF Workflows.

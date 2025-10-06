@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The Magentic Foundation Framework is designed as a layered architecture that extends Microsoft Agent Framework with enterprise orchestration, security, and monitoring capabilities.
+The Foundation Framework is designed as a layered architecture that extends Microsoft Agent Framework with enterprise orchestration, security, and monitoring capabilities.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -11,7 +11,7 @@ The Magentic Foundation Framework is designed as a layered architecture that ext
 └───────────────────────────┬─────────────────────────────────────┘
                             │
 ┌───────────────────────────▼─────────────────────────────────────┐
-│              Magentic Foundation Framework                       │
+│              Foundation Framework                       │
 │                                                                   │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                  Orchestration Layer                     │   │
@@ -448,7 +448,7 @@ Final Result: All conversation messages
 ```python
 class Settings(BaseModel):
     # Application
-    app_name: str = "Magentic Framework"
+    app_name: str = "Foundation Framework"
     environment: str = "production"
     
     # Azure OpenAI
@@ -553,12 +553,12 @@ pattern = SequentialPattern(
 
 ## Summary
 
-The Magentic Foundation Framework architecture provides:
+The Foundation Framework architecture provides:
 
 1. **Clean separation of concerns** - Each component has a single responsibility
 2. **MAF integration** - Leverages Microsoft Agent Framework while adding value
 3. **Extensibility** - Custom patterns, agents, and monitoring
-4. **Production-ready** - Security, monitoring, error handling
+4. **Security** - Security, monitoring, error handling
 5. **Developer-friendly** - Clear APIs and documentation
 
 See [Orchestration Patterns](./patterns.md) for pattern implementation details.

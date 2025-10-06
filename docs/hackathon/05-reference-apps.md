@@ -19,7 +19,7 @@ Our reference applications demonstrate real-world implementations of the Microso
 
 ### Architecture Overview
 
-The Deep Research App showcases all three execution paradigms and demonstrates how to build production-ready research workflows.
+The Deep Research App showcases all three execution paradigms and demonstrates how to build research workflows.
 
 ```mermaid
 graph TB
@@ -70,7 +70,7 @@ graph TB
 # Location: deep_research_app/backend/app/main.py
 
 class AIResearchAgent(BaseAgent):
-    """Production-ready research agent with MAF compliance."""
+    """research agent with MAF compliance."""
     
     def __init__(self, agent_id: str, name: str, description: str, azure_client, model: str, system_prompt: str):
         super().__init__(name=name, description=description)
@@ -455,7 +455,7 @@ async def adaptive_orchestration(orchestrator, initial_plan: Dict, feedback: Dic
 
 ### Architecture Overview
 
-The original Financial Research App (in `finagent_app/`) demonstrates production-grade multi-pattern orchestration with specialized financial agents.
+The original Financial Research App (in `finagent_app/`) demonstrates Multi-pattern orchestration with specialized financial agents.
 
 ```mermaid
 graph TB
@@ -542,7 +542,7 @@ class DataOptimizationAgent(BaseAgent):
 
 ### Architecture Overview
 
-The Dynamic Financial Research App (`finagent_dynamic_app/`) demonstrates production-grade **dynamic planning** with human-in-the-loop approval workflow.
+The Dynamic Financial Research App (`finagent_dynamic_app/`) demonstrates  **dynamic planning** with human-in-the-loop approval workflow.
 
 ```mermaid
 graph TB
@@ -743,7 +743,7 @@ class SynthesisAgentPattern:
 - **Efficiency**: Data gathering agents don't get overwhelmed with irrelevant context
 - **Comprehensiveness**: Synthesis agents see the full picture for better analysis
 - **Automatic Discovery**: No need to manually declare all dependencies
-- **Production-Ready**: Implements enterprise-grade context management
+- **Context Management**: Implements enterprise-grade context management
 
 #### 3. Human-in-the-Loop Approval Workflow
 
@@ -1251,7 +1251,7 @@ class RealTimeCallAgent(BaseAgent):
 
 ### Architecture Overview
 
-The Financial Research App demonstrates production-grade dynamic planning with specialized financial agents.
+The Financial Research App demonstrates dynamic planning with specialized financial agents.
 
 ```mermaid
 graph TB

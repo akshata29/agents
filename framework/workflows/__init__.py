@@ -2,7 +2,7 @@
 Workflows Package - Declarative Workflow Processing
 
 Provides YAML-based workflow definition and execution capabilities
-for the Magentic Foundation Framework.
+for the Foundation Framework.
 """
 
 from .engine import (

@@ -2,7 +2,7 @@
 
 ## Microsoft Agent Framework & Custom Framework Implementation Guide
 
-Welcome to the comprehensive technical documentation for building multi-agent applications using Microsoft Agent Framework (MAF) and our custom Magentic Foundation Framework. This guide is designed for the hackathon to provide you with everything you need to understand, implement, and build upon the patterns demonstrated in our reference applications.
+Welcome to the comprehensive technical documentation for building multi-agent applications using Microsoft Agent Framework (MAF) and our custom Foundation Framework. This guide is designed for the hackathon to provide you with everything you need to understand, implement, and build upon the patterns demonstrated in our reference applications.
 
 ## 📚 Documentation Structure
 
@@ -12,7 +12,7 @@ Welcome to the comprehensive technical documentation for building multi-agent ap
 - Architecture and components
 - When to use agents vs workflows
 
-### 2. [Magentic Foundation Framework](./02-framework-architecture.md)
+### 2. [Foundation Framework](./02-framework-architecture.md)
 - Our enterprise wrapper over MAF
 - Architecture and design patterns
 - Core components and services
@@ -69,7 +69,7 @@ Based on the attached hackathon requirements, this documentation covers:
 ## 🚀 Getting Started
 
 1. **Start with**: [Microsoft Agent Framework Overview](./01-maf-overview.md)
-2. **Understand our framework**: [Magentic Foundation Framework](./02-framework-architecture.md)
+2. **Understand our framework**: [Foundation Framework](./02-framework-architecture.md)
 3. **Learn patterns**: [Orchestration Patterns](./03-orchestration-patterns.md)
 4. **Build agents**: [Agent Implementation Guide](./04-agent-implementation.md)
 5. **See examples**: [Reference Applications](./05-reference-apps.md)
@@ -81,7 +81,7 @@ Based on the attached hackathon requirements, this documentation covers:
 - **Multi-agent orchestration patterns**
 - **Enterprise-grade agent architecture**
 - **Real-world implementation strategies**
-- **Production deployment patterns**
+- **Deployment patterns**
 - **Performance and security best practices**
 
 ## 🛠 What You'll Build
@@ -90,7 +90,7 @@ By the end of this hackathon, you'll have:
 - Deep understanding of MAF and multi-agent patterns
 - Hands-on experience with our framework
 - Working implementation of one of the hackathon use cases
-- Production-ready code following best practices
+- Code following best practices
 - Knowledge to extend and customize the patterns
 
 ---

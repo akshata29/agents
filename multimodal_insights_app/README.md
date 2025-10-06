@@ -1,6 +1,6 @@
 # Multimodal Insights Multi-Agent Application
 
-> **Production-grade AI-powered multimodal content analysis system** with dynamic planning, human-in-the-loop approval, and specialized agents for audio, video, and PDF processing.
+> **AI-powered multimodal content analysis system** with dynamic planning, human-in-the-loop approval, and specialized agents for audio, video, and PDF processing.
 
 ![Multimodal Insights App](docs/images/homepage.png)
 

@@ -1,8 +1,8 @@
-# Production-Grade Financial Research Multi-Agent Application
+# Financial Research Multi-Agent Application
 
 ## 🎯 Project Summary
 
-You've successfully created a **production-grade multi-agent financial research application** that combines:
+You've successfully created a **multi-agent financial research application** that combines:
 
 - **Agent Taxonomy** from [finagentsk](https://github.com/akshata29/finagentsk)
 - **Orchestration Patterns** from the agents framework (Sequential, Concurrent, Handoff, Group Chat)

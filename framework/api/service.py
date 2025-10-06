@@ -2,7 +2,7 @@
 API Layer - FastAPI REST Interface
 
 Provides REST API endpoints for managing agents, workflows, MCP tools,
-and monitoring the Magentic Foundation Framework.
+and monitoring the Foundation Framework.
 """
 
 import asyncio
@@ -122,7 +122,7 @@ class MetricsResponse(BaseModel):
 
 class APIService:
     """
-    FastAPI-based REST API service for the Magentic Foundation Framework.
+    FastAPI-based REST API service for the Foundation Framework.
     
     Provides comprehensive REST endpoints for agent management, orchestration,
     workflow execution, MCP tool integration, and system monitoring.
@@ -153,7 +153,7 @@ class APIService:
         
         # Create FastAPI app
         self.app = FastAPI(
-            title="Magentic Foundation API",
+            title="Foundation API",
             description="Multi-Agent Orchestration and Workflow Management API",
             version="1.0.0",
             docs_url="/docs",

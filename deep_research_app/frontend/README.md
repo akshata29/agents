@@ -1,6 +1,6 @@
 # Deep Research Frontend
 
-Professional React + TypeScript frontend for the Deep Research application, showcasing the Magentic Foundation Framework.
+Professional React + TypeScript frontend for the Deep Research application, showcasing the Foundation Framework.
 
 ## Features
 
@@ -189,7 +189,7 @@ Components follow a modular pattern - each handles its own state and API calls.
 ## Performance
 
 - Code splitting with React.lazy
-- Optimized production builds
+- Optimized builds
 - Tree-shaking unused code
 - CSS purging with Tailwind
 
@@ -217,4 +217,4 @@ npm install
 
 ## License
 
-MIT - Part of the Magentic Foundation Framework
+MIT - Part of the Foundation Framework

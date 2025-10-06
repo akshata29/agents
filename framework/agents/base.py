@@ -1,7 +1,7 @@
 """
 Base Agent Class
 
-Abstract base class for all agents in the Magentic Foundation Framework.
+Abstract base class for all agents in the Foundation Framework.
 Provides common interface and functionality for agent implementations.
 """
 

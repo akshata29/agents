@@ -1,7 +1,7 @@
 """
 Deep Research Backend API
 
-FastAPI backend for the Deep Research application using Magentic Foundation Framework.
+FastAPI backend for the Deep Research application using Foundation Framework.
 Provides REST and WebSocket endpoints for workflow execution, monitoring, and real-time updates.
 """
 
@@ -473,7 +473,7 @@ async def execute_research_programmatically(
     """
     Execute research using programmatic code-based approach with framework patterns.
     
-    This demonstrates proper usage of the Magentic Foundation Framework patterns:
+    This demonstrates proper usage of the Foundation Framework patterns:
     - SequentialPattern for ordered agent execution
     - ConcurrentPattern for parallel agent execution
     - Pattern composition for hybrid workflows
@@ -758,7 +758,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="Deep Research API",
-    description="Backend API for Deep Research application using Magentic Foundation Framework",
+    description="Backend API for Deep Research application using Foundation Framework",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -841,7 +841,7 @@ async def root():
         "service": "Deep Research API",
         "version": "1.0.0",
         "status": "running",
-        "framework": "Magentic Foundation Framework"
+        "framework": "Foundation Framework"
     }
 
 
@@ -1037,7 +1037,7 @@ async def start_research(request: ResearchRequest, req: Request, background_task
             "metadata": {
                 "execution_mode": request.execution_mode,
                 "orchestration_pattern": orchestration_pattern,
-                "framework": "Magentic Foundation Framework",
+                "framework": "Foundation Framework",
                 "workflow_engine": workflow_engine_type,
                 "agent_count": 5,
                 "agents_used": ["planner", "researcher", "writer", "reviewer", "summarizer"],

@@ -1,7 +1,7 @@
 """
 Configuration Management
 
-Centralized settings and configuration management for the Magentic Foundation Framework.
+Centralized settings and configuration management for the Foundation Framework.
 """
 
 from .settings import Settings

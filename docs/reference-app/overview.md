@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Deep Research App is a comprehensive reference implementation demonstrating how to build production-ready AI applications using the Magentic Foundation Framework. It showcases both YAML-based declarative workflows and code-based programmatic orchestration patterns.
+The Deep Research App is a comprehensive reference implementation demonstrating how to build AI applications using the Foundation Framework. It showcases both YAML-based declarative workflows and code-based programmatic orchestration patterns.
 
 ## Application Architecture
 
@@ -35,7 +35,7 @@ The Deep Research App is a comprehensive reference implementation demonstrating 
 └────────────────────────┬─────────────────────────────────────┘
                          │
 ┌────────────────────────▼─────────────────────────────────────┐
-│           Magentic Foundation Framework                       │
+│           Foundation Framework                       │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ Orchestrator │  │   Registry   │  │   Workflow   │      │
 │  │              │  │              │  │    Engine    │      │
@@ -760,6 +760,6 @@ The Deep Research App demonstrates:
 2. **Dual Execution Modes**: YAML declarative vs Code programmatic
 3. **Pattern Implementation**: Sequential, Concurrent, Hybrid
 4. **Real-time Monitoring**: WebSocket updates, progress tracking
-5. **Production Features**: Error handling, logging, metrics
+5. **Features**: Error handling, logging, metrics
 
 See [Building Your Own Application](./building-your-own.md) for a step-by-step guide to creating similar applications.

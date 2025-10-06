@@ -537,7 +537,7 @@ async def main():
     print()
     
     # Initialize framework
-    print("[Initializing Magentic Foundation Framework...]")
+    print("[Initializing Foundation Framework...]")
     app = create_app()
     await app.initialize()
     print("[OK] Framework initialized")

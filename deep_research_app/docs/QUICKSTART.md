@@ -22,7 +22,7 @@ cd d:\repos\agent_foundation\deep_research_app
 ```
 
 This will:
-- Install the Magentic Foundation Framework
+- Install the Foundation Framework
 - Install backend Python dependencies
 - Install frontend Node.js dependencies
 - Create configuration files
@@ -113,7 +113,7 @@ You should see the Deep Research Dashboard!
 └────────────────┬────────────────────────────────────────┘
                  │
 ┌────────────────▼────────────────────────────────────────┐
-│            Magentic Foundation Framework                 │
+│            Foundation Framework                        │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │  WorkflowEngine → Orchestrator → Agent Registry  │  │
 │  └──────────────────────────────────────────────────┘  │

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../api';
 import { WebSocketMessage } from '../types';
@@ -11,6 +11,7 @@ import {
   AlertCircle,
   FileText,
 } from 'lucide-react';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface ExecutionMonitorProps {
   executionId: string;
@@ -19,14 +20,45 @@ interface ExecutionMonitorProps {
 export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps) {
   const [wsMessages, setWsMessages] = useState<WebSocketMessage[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
+  const isCompleteRef = useRef(false);
+  const lastStatusRef = useRef<any>(null);
 
   // Fetch execution status
   const { data: status, refetch } = useQuery({
     queryKey: ['executionStatus', executionId],
-    queryFn: () => apiClient.getExecutionStatus(executionId),
-    refetchInterval: 2000, // Poll every 2 seconds
+    queryFn: async () => {
+      // Don't make the API call if already complete
+      if (isCompleteRef.current && lastStatusRef.current) {
+        return lastStatusRef.current; // Return cached status
+      }
+      const result = await apiClient.getExecutionStatus(executionId);
+      lastStatusRef.current = result; // Cache the result
+      return result;
+    },
+    refetchInterval: () => {
+      // Return false if complete to stop scheduling new intervals
+      if (isCompleteRef.current) {
+        return false;
+      }
+      return 2000;
+    },
+    refetchIntervalInBackground: false,
     enabled: !!executionId,
   });
+
+  // Stop polling when execution completes
+  useEffect(() => {
+    if (status && !isCompleteRef.current) {
+      const complete = status.status === 'success' || 
+                      status.status === 'completed' || 
+                      status.status === 'failed' || 
+                      status.status === 'cancelled';
+      
+      if (complete) {
+        isCompleteRef.current = true;
+      }
+    }
+  }, [status, executionId]);
 
   // WebSocket connection for real-time updates
   useEffect(() => {
@@ -107,11 +139,16 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
       <div className="card">
         <div className="card-header">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1">
               <h2 className="text-xl font-bold text-white flex items-center space-x-2">
                 <Activity className="w-5 h-5" />
                 <span>Execution Monitor</span>
               </h2>
+              {status.metadata?.topic && (
+                <p className="text-base text-primary-300 mt-2 font-medium">
+                  📋 {status.metadata.topic}
+                </p>
+              )}
               <p className="text-sm text-slate-400 mt-1">ID: {executionId}</p>
             </div>
             <div className="flex items-center space-x-3">
@@ -240,7 +277,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                 <div className="pt-3 border-t border-slate-700">
                   <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Agents Used</p>
                   <div className="flex flex-wrap gap-1">
-                    {status.metadata.agents_used.map((agent, idx) => (
+                    {status.metadata.agents_used.map((agent: string, idx: number) => (
                       <span
                         key={idx}
                         className="px-2 py-1 text-xs bg-primary-500/20 text-primary-300 rounded border border-primary-500/30"
@@ -282,7 +319,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
               <p className="text-slate-500 text-sm">No tasks completed yet</p>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {status.completed_tasks.map((task, index) => (
+                {status.completed_tasks.map((task: string, index: number) => (
                   <div
                     key={index}
                     className="flex items-center space-x-2 p-3 bg-success-500/10 border border-success-500/30 rounded-lg"
@@ -309,7 +346,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
               <p className="text-slate-500 text-sm">No failed tasks</p>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {status.failed_tasks.map((task, index) => (
+                {status.failed_tasks.map((task: string, index: number) => (
                   <div
                     key={index}
                     className="flex items-center space-x-2 p-3 bg-error-500/10 border border-error-500/30 rounded-lg"
@@ -343,9 +380,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.research_plan}
-                  </pre>
+                  <MarkdownRenderer content={status.result.research_plan} />
                 </div>
               </details>
             )}
@@ -358,9 +393,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.core_concepts}
-                  </pre>
+                  <MarkdownRenderer content={status.result.core_concepts} />
                 </div>
               </details>
             )}
@@ -373,9 +406,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.current_state}
-                  </pre>
+                  <MarkdownRenderer content={status.result.current_state} />
                 </div>
               </details>
             )}
@@ -388,9 +419,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.applications}
-                  </pre>
+                  <MarkdownRenderer content={status.result.applications} />
                 </div>
               </details>
             )}
@@ -403,9 +432,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.challenges}
-                  </pre>
+                  <MarkdownRenderer content={status.result.challenges} />
                 </div>
               </details>
             )}
@@ -418,9 +445,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.future_trends}
-                  </pre>
+                  <MarkdownRenderer content={status.result.future_trends} />
                 </div>
               </details>
             )}
@@ -433,9 +458,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
-                  <pre className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed font-sans">
-                    {status.result.final_report}
-                  </pre>
+                  <MarkdownRenderer content={status.result.final_report} />
                 </div>
               </details>
             )}
@@ -461,9 +484,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                   <span>Executive Summary</span>
                 </h4>
                 <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-                  <p className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed">
-                    {status.result.executive_summary}
-                  </p>
+                  <MarkdownRenderer content={status.result.executive_summary} />
                 </div>
               </div>
             )}
@@ -473,9 +494,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
               <div>
                 <h4 className="text-md font-bold text-primary-400 mb-3">Research Plan</h4>
                 <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-                  <p className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed">
-                    {status.result.research_plan}
-                  </p>
+                  <MarkdownRenderer content={status.result.research_plan} />
                 </div>
               </div>
             )}
@@ -489,9 +508,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                       {key.replace(/_/g, ' ')}
                     </h4>
                     <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-                      <p className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed">
-                        {status.result[key]}
-                      </p>
+                      <MarkdownRenderer content={status.result[key]} />
                     </div>
                   </div>
                 );
@@ -508,9 +525,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
                 </h4>
                 <div className="p-6 bg-gradient-to-br from-slate-700/50 to-slate-800/50 rounded-lg border-2 border-success-500/30">
                   <div className="prose prose-invert max-w-none">
-                    <p className="whitespace-pre-wrap text-sm text-slate-100 leading-relaxed">
-                      {status.result.final_report}
-                    </p>
+                    <MarkdownRenderer content={status.result.final_report} />
                   </div>
                 </div>
               </div>
@@ -521,9 +536,7 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
               <div>
                 <h4 className="text-md font-bold text-primary-400 mb-3">Validation Results</h4>
                 <div className="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-                  <p className="whitespace-pre-wrap text-sm text-slate-200 leading-relaxed">
-                    {status.result.validation_results}
-                  </p>
+                  <MarkdownRenderer content={status.result.validation_results} />
                 </div>
               </div>
             )}

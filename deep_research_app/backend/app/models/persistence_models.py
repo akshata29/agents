@@ -66,6 +66,8 @@ class ResearchRun(BaseModel):
     
     # Technical details
     orchestration_pattern: Optional[str] = None
+    framework: Optional[str] = None  # Framework name (e.g., "Foundation Framework")
+    workflow_engine: Optional[str] = None  # Workflow engine type
     workflow_graph: Optional[Dict[str, Any]] = None  # For MAF workflow
     task_results: Dict[str, Any] = Field(default_factory=dict)  # Results from each task
     execution_details: Optional[Dict[str, Any]] = None  # Complete execution monitor details (tasks, outputs, timeline)

@@ -16,9 +16,12 @@
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.20.0",
     "reactflow": "^11.10.1",
     "recharts": "^2.10.3",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.1.0"
   },
   "devDependencies": {

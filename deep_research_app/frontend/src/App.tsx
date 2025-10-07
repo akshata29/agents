@@ -55,11 +55,6 @@ function App() {
               <div className="px-3 py-1 bg-success-500/20 text-success-400 rounded-full">
                 Framework v1.0.0
               </div>
-              {workflowInfo && (
-                <div className="px-3 py-1 bg-primary-500/20 text-primary-400 rounded-full">
-                  {workflowInfo.total_tasks} Tasks
-                </div>
-              )}
             </div>
           </div>
         </div>

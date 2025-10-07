@@ -203,9 +203,18 @@ class AIResearchAgent(BaseAgent):
                 prompt_parts.append(f"\n{key.replace('_', ' ').title()}: {value}")
         return "\n".join(prompt_parts)
     
-    async def process(self, task: str, context: Dict[str, Any] = None) -> str:
+    async def process(self, message, context: Dict[str, Any] = None) -> str:
         """Legacy method for YAML-based workflow compatibility."""
         context = context or {}
+        
+        # Handle both string and AgentMessage object
+        if hasattr(message, 'content'):
+            # It's an AgentMessage object
+            task = message.content
+        else:
+            # It's a string
+            task = str(message)
+        
         response = await self.run(messages=task, thread=None, context=context)
         return response.messages[-1].text if response.messages else ""
 
@@ -356,9 +365,18 @@ Provide a comprehensive, well-structured response."""
                             role=Role.ASSISTANT
                         )
     
-    async def process(self, task: str, context: Dict[str, Any] = None) -> str:
+    async def process(self, message, context: Dict[str, Any] = None) -> str:
         """Legacy method for YAML-based workflow compatibility."""
         context = context or {}
+        
+        # Handle both string and AgentMessage object
+        if hasattr(message, 'content'):
+            # It's an AgentMessage object
+            task = message.content
+        else:
+            # It's a string
+            task = str(message)
+        
         response = await self.run(messages=task, thread=None, context=context)
         return response.messages[-1].text if response.messages else ""
 
@@ -1035,6 +1053,7 @@ async def start_research(request: ResearchRequest, req: Request, background_task
             "session_id": session_id,  # For Cosmos DB persistence
             "run_id": run_id,  # For Cosmos DB persistence
             "metadata": {
+                "topic": request.topic,  # Research topic/objective
                 "execution_mode": request.execution_mode,
                 "orchestration_pattern": orchestration_pattern,
                 "framework": "Foundation Framework",
@@ -1286,8 +1305,16 @@ async def get_execution_status(execution_id: str):
             # Get error if failed
             error = run.error_message
             
-            # Metadata
+            # Metadata - include orchestration pattern and framework info
             metadata = run.metadata if run.metadata else {}
+            
+            # Add top-level technical details to metadata if available
+            if run.orchestration_pattern:
+                metadata["orchestration_pattern"] = run.orchestration_pattern
+            if run.framework:
+                metadata["framework"] = run.framework
+            if run.workflow_engine:
+                metadata["workflow_engine"] = run.workflow_engine
             
             logger.info("Loaded historical execution", execution_id=execution_id, status=status, progress=progress)
             
@@ -1643,8 +1670,15 @@ async def save_execution_to_cosmos(execution_id: str, status: str, results: Dict
             if "research_plan" in results:
                 update_data["research_plan"] = results.get("research_plan")
             
-            # Save all results in metadata
-            update_data["metadata"] = results
+            # Merge results with existing metadata from exec_info
+            existing_metadata = exec_info.get("metadata", {})
+            update_data["metadata"] = {**existing_metadata, **results}
+            
+            # Also save orchestration pattern and framework info at top level
+            if existing_metadata:
+                update_data["orchestration_pattern"] = existing_metadata.get("orchestration_pattern")
+                update_data["framework"] = existing_metadata.get("framework")
+                update_data["workflow_engine"] = existing_metadata.get("workflow_engine")
         
         # Add completed tasks from exec_info
         if "completed_tasks" in exec_info:

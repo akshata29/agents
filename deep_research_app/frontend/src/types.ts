@@ -17,6 +17,7 @@ export interface ResearchResponse {
 }
 
 export interface ExecutionMetadata {
+  topic?: string;  // Research topic/objective
   execution_mode: string;
   orchestration_pattern: string;
   framework: string;

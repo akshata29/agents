@@ -2,12 +2,88 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '../api';
 import { ResearchRequest } from '../types';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Lightbulb, Brain, TrendingUp, Shield, Rocket, BookOpen, Globe } from 'lucide-react';
+
+interface QuickTask {
+  title: string;
+  description: string;
+  template: string;
+  icon: React.ReactNode;
+  executionMode: 'workflow' | 'code' | 'maf-workflow';
+  depth: 'quick' | 'standard' | 'comprehensive' | 'exhaustive';
+}
 
 interface ResearchFormProps {
   onResearchStart: (executionId: string) => void;
   sessionId: string | null;
 }
+
+const quickTasks: QuickTask[] = [
+  {
+    title: 'AI in Healthcare',
+    description: 'Emerging AI applications in medical diagnosis',
+    template: 'Artificial Intelligence in Healthcare: Current applications, emerging trends, ethical considerations, and future impact on medical diagnosis and patient care',
+    icon: <Brain className="w-5 h-5" />,
+    executionMode: 'workflow',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'Quantum Computing',
+    description: 'Quantum computing breakthroughs and applications',
+    template: 'Quantum Computing: Recent breakthroughs, practical applications, challenges in scalability, and potential impact on cryptography and drug discovery',
+    icon: <Rocket className="w-5 h-5" />,
+    executionMode: 'code',
+    depth: 'standard',
+  },
+  {
+    title: 'Climate Technology',
+    description: 'Innovative climate solutions and carbon capture',
+    template: 'Climate Technology Solutions: Analysis of carbon capture technologies, renewable energy innovations, sustainable agriculture practices, and their effectiveness in combating climate change',
+    icon: <Globe className="w-5 h-5" />,
+    executionMode: 'maf-workflow',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'Cybersecurity Trends',
+    description: 'Emerging cyber threats and defense strategies',
+    template: 'Cybersecurity in 2025: Emerging threats including AI-powered attacks, zero-trust architecture adoption, quantum-resistant cryptography, and best practices for enterprise security',
+    icon: <Shield className="w-5 h-5" />,
+    executionMode: 'workflow',
+    depth: 'standard',
+  },
+  {
+    title: 'Space Exploration',
+    description: 'Commercial space industry and Mars missions',
+    template: 'Future of Space Exploration: Commercial space industry growth, Mars colonization efforts, satellite technology advancements, and international space collaboration',
+    icon: <Rocket className="w-5 h-5" />,
+    executionMode: 'code',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'EdTech Innovation',
+    description: 'Technology transforming education',
+    template: 'Educational Technology: Impact of AI tutors, personalized learning platforms, virtual reality in education, and the future of remote learning post-pandemic',
+    icon: <BookOpen className="w-5 h-5" />,
+    executionMode: 'workflow',
+    depth: 'quick',
+  },
+  {
+    title: 'Biotech Advances',
+    description: 'Gene editing and personalized medicine',
+    template: 'Biotechnology Breakthroughs: CRISPR gene editing applications, personalized medicine advancements, synthetic biology innovations, and ethical implications',
+    icon: <Lightbulb className="w-5 h-5" />,
+    executionMode: 'maf-workflow',
+    depth: 'standard',
+  },
+  {
+    title: 'Sustainable Energy',
+    description: 'Clean energy transition and storage',
+    template: 'Sustainable Energy Transition: Analysis of solar and wind efficiency improvements, battery storage innovations, green hydrogen potential, and challenges in grid modernization',
+    icon: <TrendingUp className="w-5 h-5" />,
+    executionMode: 'code',
+    depth: 'exhaustive',
+  },
+];
 
 export default function ResearchForm({ onResearchStart, sessionId }: ResearchFormProps) {
   const [formData, setFormData] = useState<ResearchRequest>({
@@ -33,8 +109,69 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
     }
   };
 
+  const handleQuickTask = (task: QuickTask) => {
+    setFormData({ 
+      ...formData, 
+      topic: task.template,
+      execution_mode: task.executionMode,
+      depth: task.depth,
+    });
+    // Scroll to the topic field
+    const topicField = document.getElementById('topic') as HTMLTextAreaElement;
+    topicField?.focus();
+  };
+
   return (
-    <div className="card">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Quick Tasks Section */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="text-lg font-semibold text-white">Quick Tasks</h3>
+          <p className="text-sm text-slate-400 mt-1">
+            Choose a pre-configured research topic to get started quickly
+          </p>
+        </div>
+        <div className="card-body">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {quickTasks.map((task, index) => (
+              <button
+                key={index}
+                onClick={() => handleQuickTask(task)}
+                disabled={startResearchMutation.isPending}
+                className="flex items-start gap-3 p-4 bg-slate-700 hover:bg-slate-600 rounded-lg border border-slate-600 hover:border-primary-500 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex-shrink-0 w-10 h-10 bg-primary-500/20 rounded-lg flex items-center justify-center text-primary-400">
+                  {task.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-semibold text-white mb-1">
+                    {task.title}
+                  </h4>
+                  <p className="text-xs text-slate-400 mb-2">
+                    {task.description}
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-500/20 text-primary-300">
+                      {task.executionMode === 'workflow' && '📋 YAML'}
+                      {task.executionMode === 'code' && '💻 Code'}
+                      {task.executionMode === 'maf-workflow' && '🔗 MAF'}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-600 text-slate-300">
+                      {task.depth === 'quick' && '⚡ Quick'}
+                      {task.depth === 'standard' && '📊 Standard'}
+                      {task.depth === 'comprehensive' && '🔬 Deep'}
+                      {task.depth === 'exhaustive' && '🚀 Exhaustive'}
+                    </span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Research Form */}
+      <div className="card">
       <div className="card-header">
         <h2 className="text-xl font-bold text-white flex items-center space-x-2">
           <Search className="w-5 h-5" />
@@ -51,15 +188,18 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
             <label htmlFor="topic" className="block text-sm font-medium text-slate-300 mb-2">
               Research Topic <span className="text-error-500">*</span>
             </label>
-            <input
+            <textarea
               id="topic"
-              type="text"
               value={formData.topic}
               onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
-              placeholder="e.g., Artificial Intelligence in Healthcare"
-              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              placeholder="e.g., Artificial Intelligence in Healthcare: Current applications, emerging trends, and future impact..."
+              rows={4}
+              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y"
               required
             />
+            <p className="text-xs text-slate-500 mt-1">
+              Describe your research topic in detail. You can use Quick Tasks above for inspiration.
+            </p>
           </div>
 
           {/* Research Depth */}
@@ -187,6 +327,7 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
           )}
         </form>
       </div>
+    </div>
     </div>
   );
 }

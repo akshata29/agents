@@ -62,6 +62,9 @@ from tavily import TavilyClient
 # Import services
 from .services.tavily_search_service import TavilySearchService, Source
 from .services.export_service import ExportService, get_export_service
+from .services.file_handler import FileHandler
+from .services.document_intelligence_service import DocumentIntelligenceService
+from .services.document_research_service import DocumentResearchService
 
 # Import configuration
 from .config.research_config import (
@@ -84,6 +87,7 @@ from .advanced_research import (
 
 # Import routers
 from app.routers import sessions
+from app.routers import files as files_router
 
 logger = structlog.get_logger(__name__)
 
@@ -93,6 +97,63 @@ agent_registry: Optional[AgentRegistry] = None
 orchestrator: Optional[MagenticOrchestrator] = None
 active_executions: Dict[str, Dict[str, Any]] = {}
 websocket_connections: List[WebSocket] = []
+
+# File handling services
+file_handler: Optional[FileHandler] = None
+doc_intelligence: Optional[DocumentIntelligenceService] = None
+doc_research_service: Optional[DocumentResearchService] = None
+
+
+# Helper function to prepare document context
+async def prepare_document_context(document_ids: List[str]) -> Optional[Dict[str, Any]]:
+    """
+    Prepare document context for research from selected document IDs.
+    
+    Args:
+        document_ids: List of document IDs to include
+        
+    Returns:
+        Dictionary with document_context and document_sources, or None if no documents
+    """
+    if not document_ids or not doc_research_service:
+        return None
+    
+    try:
+        logger.info(f"Preparing document context", document_count=len(document_ids))
+        
+        # Get document statistics
+        stats = await doc_research_service.get_document_stats(document_ids)
+        
+        # Retrieve all document content
+        document_sources = []
+        document_context_parts = []
+        
+        for doc_id in document_ids:
+            doc_source = await doc_research_service._get_document_source(doc_id, "")
+            if doc_source:
+                document_sources.extend(doc_source["sources"])
+                document_context_parts.append(doc_source["context"])
+        
+        # Combine document context
+        document_context = "\n\n---\n\n".join(document_context_parts) if document_context_parts else ""
+        
+        logger.info(
+            f"Document context prepared",
+            total_documents=len(document_ids),
+            total_pages=stats.get("total_pages", 0),
+            total_words=stats.get("total_words", 0),
+            context_length=len(document_context)
+        )
+        
+        return {
+            "document_context": document_context,
+            "document_sources": document_sources,
+            "document_stats": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to prepare document context", error=str(e))
+        return None
 
 
 # Custom Agent Classes
@@ -544,6 +605,7 @@ async def execute_research_programmatically(
     depth: str,
     max_sources: int,
     include_citations: bool,
+    document_context_data: Optional[Dict[str, Any]] = None,
     model_deployment: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -553,8 +615,26 @@ async def execute_research_programmatically(
     - SequentialPattern for ordered agent execution
     - ConcurrentPattern for parallel agent execution
     - Pattern composition for hybrid workflows
+    
+    Args:
+        document_context_data: Optional document context with document_context, document_sources, and document_stats
     """
     results = {}
+    
+    # Extract document context if available
+    document_context = ""
+    document_sources = []
+    has_documents = False
+    
+    if document_context_data:
+        document_context = document_context_data.get("document_context", "")
+        document_sources = document_context_data.get("document_sources", [])
+        has_documents = len(document_context) > 0
+        logger.info(
+            f"📄 Research will include document context",
+            doc_words=document_context_data.get("document_stats", {}).get("total_words", 0),
+            doc_pages=document_context_data.get("document_stats", {}).get("total_pages", 0)
+        )
     
     try:
         # ============================================================
@@ -818,6 +898,20 @@ Example format:
                     
                     logger.info(f"📚 Search returned {len(sources)} sources for query: {query[:50]}...")
                     
+                    # Combine web search context with document context
+                    combined_context = context
+                    if has_documents and document_context:
+                        combined_context = f"""## Uploaded Research Documents
+
+{document_context}
+
+---
+
+## Web Search Results
+
+{context}"""
+                        logger.info(f"📄 Combined document and web context for query")
+                    
                     # Create synthesis prompt (with Chain-of-Thought for exhaustive)
                     if depth == "exhaustive":
                         # Use Chain-of-Thought prompting for deeper analysis
@@ -825,21 +919,26 @@ Example format:
                         synthesis_prompt = prompting_service.get_chain_of_thought_prompt(
                             topic=topic,
                             query=query,
-                            context=context,
+                            context=combined_context,  # Use combined context
                             prompt_type="synthesis"
                         )
                         logger.info(f"🧠 Using Chain-of-Thought prompting for query: {query[:50]}...")
                     else:
                         # Standard synthesis for other depths
-                        synthesis_prompt = f"""Based on the following search results for "{query}":
+                        source_types = "web search results"
+                        if has_documents:
+                            source_types = "uploaded research documents and web search results"
+                        
+                        synthesis_prompt = f"""Based on the following {source_types} for "{query}":
 
 <CONTEXT>
-{context}
+{combined_context}
 </CONTEXT>
 
 Extract key learnings and insights. Be concise but information-dense.
 Include citations using [1], [2] format from the context above.
-Focus on factual information, metrics, and specific details."""
+Focus on factual information, metrics, and specific details.
+{f"Pay special attention to insights from uploaded documents." if has_documents else ""}"""
                     
                     # NOTE: Use the outer azure_client and model_config from execute_research_programmatically scope
                     
@@ -881,13 +980,25 @@ Focus on factual information, metrics, and specific details."""
         for key, data in aggregated_findings.items():
             results[key] = data["findings"]
         
+        # Collect all sources (web + documents)
+        all_web_sources = []
+        for data in aggregated_findings.values():
+            all_web_sources.extend(data["sources"])
+        
+        # Add document sources to results
+        if has_documents and document_sources:
+            results["document_sources"] = document_sources
+            results["total_document_sources"] = len(document_sources)
+            logger.info(f"📄 Added {len(document_sources)} document sources to results")
+        
         # Update progress: Phase 2 complete
+        total_sources_count = len(all_web_sources) + len(document_sources)
         if execution_id in active_executions:
             active_executions[execution_id]["current_task"] = "Phase 3: Synthesizing Findings"
             active_executions[execution_id]["progress"] = 50.0
             active_executions[execution_id]["completed_tasks"] = [
                 "Phase 1: Research Planning",
-                f"Phase 2: Deep Research ({sum(d['sources_count'] for d in aggregated_findings.values())} sources)"
+                f"Phase 2: Deep Research ({total_sources_count} sources: {len(all_web_sources)} web + {len(document_sources)} documents)"
             ]
         
         # Phase 3-6: Sequential Processing using SequentialPattern
@@ -1558,6 +1669,7 @@ Provide an improved version that maintains accuracy while addressing validation 
 async def lifespan(app: FastAPI):
     """Lifecycle management for the application."""
     global workflow_engine, agent_registry, orchestrator
+    global file_handler, doc_intelligence, doc_research_service
     
     # Startup
     logger.info("Starting Deep Research Backend API")
@@ -1577,6 +1689,47 @@ async def lifespan(app: FastAPI):
         observability=observability,
         mcp_client=mcp_client
     )
+    
+    # Initialize file handling services
+    try:
+        file_handler = FileHandler(
+            azure_tenant_id=os.getenv("AZURE_TENANT_ID"),
+            azure_client_id=os.getenv("AZURE_CLIENT_ID"),
+            azure_client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+            azure_blob_storage_name=os.getenv("AZURE_BLOB_STORAGE_NAME"),
+            azure_storage_container=os.getenv("AZURE_STORAGE_CONTAINER", "research-documents"),
+            upload_directory=str(backend_dir / "uploads"),
+            data_directory=str(backend_dir / "data")
+        )
+        await file_handler.initialize()
+        logger.info("File handler initialized")
+        
+        # Initialize Document Intelligence service
+        doc_intelligence = DocumentIntelligenceService(
+            endpoint=os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT"),
+            key=os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY"),
+            azure_tenant_id=os.getenv("AZURE_TENANT_ID"),
+            azure_client_id=os.getenv("AZURE_CLIENT_ID"),
+            azure_client_secret=os.getenv("AZURE_CLIENT_SECRET"),
+            azure_blob_storage_name=os.getenv("AZURE_BLOB_STORAGE_NAME")
+        )
+        logger.info("Document Intelligence service initialized")
+        
+        # Initialize Tavily service for document research service
+        tavily_service = TavilySearchService(api_key=os.getenv("TAVILY_API_KEY"))
+        
+        # Initialize Document Research service
+        doc_research_service = DocumentResearchService(
+            file_handler=file_handler,
+            tavily_service=tavily_service
+        )
+        logger.info("Document research service initialized")
+        
+        # Wire up file router dependencies
+        files_router.set_services(file_handler, doc_intelligence)
+        
+    except Exception as e:
+        logger.warning(f"Failed to initialize file handling services: {e}. File upload features will not be available.")
     
     # Setup research agents
     await setup_research_agents(agent_registry, settings)
@@ -1603,6 +1756,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down Deep Research Backend API")
+    if file_handler:
+        await file_handler.shutdown()
 
 
 # Create FastAPI app
@@ -1627,6 +1782,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(sessions.router)
+app.include_router(files_router.router)
 
 
 # Request/Response Models
@@ -1642,6 +1798,10 @@ class ResearchRequest(BaseModel):
     )
     session_id: Optional[str] = Field(default=None, description="Optional session ID to use existing session")
     model_deployment: Optional[str] = Field(default=None, description="Optional: Override automatic model selection with specific deployment name")
+    document_ids: List[str] = Field(
+        default_factory=list,
+        description="List of document IDs to include in research context"
+    )
 
 
 class ResearchResponse(BaseModel):
@@ -1760,6 +1920,39 @@ async def get_workflow_info():
     )
 
 
+@app.get("/api/documents/available")
+async def get_available_documents(user_id: Optional[str] = None):
+    """
+    Get list of available processed documents for research.
+    
+    Args:
+        user_id: Optional user ID filter
+    
+    Returns:
+        List of available documents with metadata
+    """
+    if not doc_research_service:
+        raise HTTPException(
+            status_code=503,
+            detail="Document research service not initialized"
+        )
+    
+    try:
+        documents = await doc_research_service.get_available_documents(user_id=user_id)
+        
+        return {
+            "success": True,
+            "documents": documents,
+            "count": len(documents)
+        }
+    except Exception as e:
+        logger.error("Failed to get available documents", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get available documents: {str(e)}"
+        )
+
+
 @app.post("/api/research/start", response_model=ResearchResponse)
 async def start_research(request: ResearchRequest, req: Request, background_tasks: BackgroundTasks):
     """Start a new research workflow execution."""
@@ -1839,6 +2032,27 @@ async def start_research(request: ResearchRequest, req: Request, background_task
         except Exception as e:
             logger.error(f"❌ FAILED to persist to Cosmos DB: {e}. Continuing without persistence.", exc_info=True)
         
+        # Prepare document context if documents are selected
+        document_context_data = None
+        if request.document_ids and len(request.document_ids) > 0:
+            logger.info(
+                f"🔍 Preparing document context from {len(request.document_ids)} selected documents",
+                document_ids=request.document_ids
+            )
+            document_context_data = await prepare_document_context(request.document_ids)
+            if document_context_data:
+                logger.info(
+                    f"📄 Document context prepared for research",
+                    document_count=len(request.document_ids),
+                    total_words=document_context_data["document_stats"].get("total_words", 0),
+                    total_pages=document_context_data["document_stats"].get("total_pages", 0),
+                    context_length=len(document_context_data["document_context"])
+                )
+            else:
+                logger.warning(f"⚠️ Failed to prepare document context despite having document IDs")
+        else:
+            logger.info(f"ℹ️ No documents selected - using web search only")
+        
         # Determine workflow engine and pattern based on execution mode
         if request.execution_mode == "maf-workflow":
             workflow_engine_type = "MAF Graph-based Workflows"
@@ -1912,7 +2126,8 @@ async def start_research(request: ResearchRequest, req: Request, background_task
                 execute_maf_workflow_research_task,
                 execution_id,
                 request.topic,
-                max_sources_for_depth  # Use depth-specific max_sources
+                max_sources_for_depth,  # Use depth-specific max_sources
+                document_context_data  # Pass document context
             )
         elif request.execution_mode == "code":
             # Code-based execution: Use programmatic approach with orchestrator
@@ -1925,7 +2140,8 @@ async def start_research(request: ResearchRequest, req: Request, background_task
                 request.topic,
                 request.depth,
                 request.max_sources,
-                request.include_citations
+                request.include_citations,
+                document_context_data  # Pass document context
             )
         else:
             # Workflow-based execution: Use declarative YAML
@@ -1944,7 +2160,9 @@ async def start_research(request: ResearchRequest, req: Request, background_task
                 "research_depth": request.depth,
                 "max_sources": max_sources_for_depth,  # Use depth-specific max_sources
                 "include_citations": request.include_citations,
-                "depth_config": depth_config  # Pass full config for agents to use
+                "depth_config": depth_config,  # Pass full config for agents to use
+                "document_context": document_context_data["document_context"] if document_context_data else "",  # Pass document context
+                "has_documents": bool(document_context_data)  # Flag to indicate documents are available
             }
             
             # Start workflow execution with our execution_id
@@ -2951,11 +3169,27 @@ async def monitor_execution(execution_id: str):
 async def execute_maf_workflow_research_task(
     execution_id: str,
     topic: str,
-    max_sources: int
+    max_sources: int,
+    document_context_data: Optional[Dict[str, Any]] = None
 ):
     """Background task to execute MAF graph-based workflow research."""
     try:
         logger.info(f"Starting MAF workflow research execution", execution_id=execution_id, topic=topic)
+        
+        # Extract document context if available
+        document_context = ""
+        document_sources = []
+        has_documents = False
+        
+        if document_context_data:
+            document_context = document_context_data.get("document_context", "")
+            document_sources = document_context_data.get("document_sources", [])
+            has_documents = len(document_context) > 0
+            logger.info(
+                f"📄 MAF workflow will include document context",
+                doc_words=document_context_data.get("document_stats", {}).get("total_words", 0),
+                doc_pages=document_context_data.get("document_stats", {}).get("total_pages", 0)
+            )
         
         # Update initial progress
         if execution_id in active_executions:
@@ -3011,7 +3245,9 @@ async def execute_maf_workflow_research_task(
             max_sources=max_sources,
             queries_per_area=2,  # Multi-query deep research
             results_per_query=5,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            document_context=document_context,
+            document_sources=document_sources
         )
         
         # Update execution status with results
@@ -3142,6 +3378,7 @@ async def execute_code_based_research(
     depth: str,
     max_sources: int,
     include_citations: bool,
+    document_context_data: Optional[Dict[str, Any]] = None,
     model_deployment: Optional[str] = None
 ):
     """Background task to execute code-based (programmatic) research with orchestrator."""
@@ -3157,6 +3394,7 @@ async def execute_code_based_research(
             depth=depth,
             max_sources=max_sources,
             include_citations=include_citations,
+            document_context_data=document_context_data,
             model_deployment=model_deployment
         )
         

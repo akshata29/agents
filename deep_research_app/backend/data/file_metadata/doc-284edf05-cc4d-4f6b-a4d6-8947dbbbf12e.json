@@ -1,0 +1,23 @@
+{
+  "id": "doc-284edf05-cc4d-4f6b-a4d6-8947dbbbf12e",
+  "session_id": "session-1759862458620",
+  "user_id": "current-user",
+  "filename": "MSFT 2025 10K.pdf",
+  "file_type": "pdf",
+  "file_size": 635579,
+  "mime_type": "application/pdf",
+  "file_path": "https://astdnapubstor.blob.core.windows.net/multimodal/session-1759862458620/doc-284edf05-cc4d-4f6b-a4d6-8947dbbbf12e.pdf",
+  "processing_status": "completed",
+  "markdown_path": "markdown/session-1759862458620/doc-284edf05-cc4d-4f6b-a4d6-8947dbbbf12e.md",
+  "upload_timestamp": "2025-10-07T18:41:09.693614",
+  "processed_timestamp": "2025-10-07T18:41:37.442327",
+  "error_message": null,
+  "metadata": {
+    "page_count": 102,
+    "word_count": 49830,
+    "has_tables": true,
+    "table_count": 77,
+    "has_figures": false,
+    "figure_count": 0
+  }
+}

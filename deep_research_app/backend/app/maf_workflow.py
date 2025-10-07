@@ -53,10 +53,14 @@ class ResearchRequest:
     execution_id: str
     max_sources: int = 5
     timestamp: datetime = None
+    document_context: str = ""
+    document_sources: List[Dict[str, str]] = None
     
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.utcnow()
+        if self.document_sources is None:
+            self.document_sources = []
 
 
 @dataclass
@@ -68,10 +72,14 @@ class ResearchPlan:
     strategy: str
     estimated_duration: int  # minutes
     timestamp: datetime = None
+    document_context: str = ""
+    document_sources: List[Dict[str, str]] = None
     
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.utcnow()
+        if self.document_sources is None:
+            self.document_sources = []
 
 
 @dataclass
@@ -222,7 +230,9 @@ ESTIMATED DURATION:
                 execution_id=request.execution_id,
                 research_areas=research_areas[:5],  # Limit to 5
                 strategy=result_text,
-                estimated_duration=len(research_areas) * 2  # 2 min per area
+                estimated_duration=len(research_areas) * 2,  # 2 min per area
+                document_context=request.document_context,
+                document_sources=request.document_sources
             )
             
             logger.info(
@@ -245,7 +255,9 @@ ESTIMATED DURATION:
                     "Applications"
                 ],
                 strategy=f"Error occurred: {str(e)}. Using default plan.",
-                estimated_duration=6
+                estimated_duration=6,
+                document_context=request.document_context,
+                document_sources=request.document_sources
             )
             await ctx.send_message(plan)
 
@@ -355,11 +367,20 @@ Example format:
                 context = search_results["context"]
                 sources = search_results["sources"]
                 
+                # Combine document context with web search context if available
+                combined_context = context
+                if plan.document_context:
+                    combined_context = f"""## Uploaded Research Documents
+{plan.document_context}
+---
+## Web Search Results
+{context}"""
+                
                 # Synthesize findings with citations
                 synthesis_prompt = f"""Based on the following search results for "{query}":
 
 <CONTEXT>
-{context}
+{combined_context}
 </CONTEXT>
 
 Extract key learnings and insights. Be concise but information-dense.
@@ -386,20 +407,25 @@ Focus on factual information, metrics, and specific details."""
             # Aggregate all findings for this area
             aggregated_findings_text = "\n\n".join(area_findings)
             
+            # Add document sources if available (only once per executor, not per query)
+            if plan.document_sources:
+                area_sources.extend(plan.document_sources)
+            
             # Create findings object
             findings_obj = ResearchFindings(
                 topic=plan.topic,
                 execution_id=plan.execution_id,
                 area=area,
                 findings=aggregated_findings_text,
-                sources=area_sources,  # Store Source objects
+                sources=area_sources,  # Store Source objects + document sources
                 confidence=0.85  # Could be calculated based on result quality
             )
             
             logger.info(
                 f"[{self.id}] Research completed",
                 area=area,
-                sources_count=len(area_sources)
+                web_sources=len([s for s in area_sources if isinstance(s, dict) and s.get("type") != "document"]),
+                document_sources=len(plan.document_sources) if plan.document_sources else 0
             )
             
             await ctx.send_message(findings_obj)
@@ -828,7 +854,9 @@ async def execute_maf_workflow_research(
     max_sources: int = 5,
     queries_per_area: int = 2,
     results_per_query: int = 5,
-    progress_callback: Optional[callable] = None
+    progress_callback: Optional[callable] = None,
+    document_context: str = "",
+    document_sources: List[Dict[str, str]] = None
 ) -> Dict[str, Any]:
     """
     Execute research using MAF workflow with multi-query deep research.
@@ -843,6 +871,8 @@ async def execute_maf_workflow_research(
         queries_per_area: Number of queries per research area
         results_per_query: Number of results per query
         progress_callback: Optional async callback for progress updates
+        document_context: Optional pre-uploaded document context
+        document_sources: Optional list of document sources
         
     Returns:
         Dictionary with research results
@@ -852,7 +882,8 @@ async def execute_maf_workflow_research(
         topic=topic,
         execution_id=execution_id,
         queries_per_area=queries_per_area,
-        results_per_query=results_per_query
+        results_per_query=results_per_query,
+        has_documents=len(document_context) > 0 if document_context else False
     )
     
     try:
@@ -870,7 +901,9 @@ async def execute_maf_workflow_research(
         request = ResearchRequest(
             topic=topic,
             execution_id=execution_id,
-            max_sources=max_sources
+            max_sources=max_sources,
+            document_context=document_context or "",
+            document_sources=document_sources or []
         )
         
         # Execute workflow and collect results

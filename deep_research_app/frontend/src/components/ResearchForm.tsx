@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '../api';
 import { ResearchRequest } from '../types';
-import { Search, Loader2, Lightbulb, Brain, TrendingUp, Shield, Rocket, BookOpen, Globe, Info } from 'lucide-react';
+import { Search, Loader2, Lightbulb, Brain, TrendingUp, Shield, Rocket, BookOpen, Globe, Info, FileText } from 'lucide-react';
 import { ModelSelector } from './ModelSelector';
+import FileUploader from './FileUploader';
+import DocumentSelector from './DocumentSelector';
 
 interface QuickTask {
   title: string;
@@ -112,6 +114,71 @@ const quickTasks: QuickTask[] = [
     executionMode: 'code',
     depth: 'exhaustive',
   },
+  // NEW: Financial & Business Analysis Tasks
+  {
+    title: 'SEC 10-K Analysis',
+    description: 'Deep dive into company financials and risks',
+    template: 'SEC 10-K Analysis for Microsoft: Comprehensive review of financial performance, revenue streams, business segments, risk factors, management discussion & analysis (MD&A), competitive positioning, and strategic initiatives.',
+    icon: <FileText className="w-5 h-5" />,
+    executionMode: 'code',
+    depth: 'exhaustive',
+  },
+  {
+    title: 'Competitor Analysis',
+    description: 'Market positioning and competitive landscape',
+    template: 'Competitor Analysis: Detailed comparison of market leaders, competitive advantages, product portfolios, pricing strategies, market share trends, SWOT analysis, and strategic differentiation.',
+    icon: <TrendingUp className="w-5 h-5" />,
+    executionMode: 'maf-workflow',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'M&A Due Diligence',
+    description: 'Acquisition target evaluation',
+    template: 'M&A Due Diligence Report: Financial health assessment, synergy opportunities, integration risks, valuation analysis, regulatory considerations, cultural fit evaluation, and deal structure recommendations.',
+    icon: <FileText className="w-5 h-5" />,
+    executionMode: 'code',
+    depth: 'exhaustive',
+  },
+  {
+    title: 'Market Research',
+    description: 'Industry trends and market opportunities',
+    template: 'Market Research Analysis: Industry size and growth projections, emerging trends, customer segmentation, competitive dynamics, regulatory landscape, technology disruptions, and market entry strategies.',
+    icon: <TrendingUp className="w-5 h-5" />,
+    executionMode: 'workflow',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'ESG Performance',
+    description: 'Environmental, social, and governance analysis',
+    template: 'ESG Performance Analysis: Environmental impact assessment, social responsibility initiatives, governance structure evaluation, sustainability metrics, regulatory compliance, stakeholder engagement, and ESG risk factors.',
+    icon: <Globe className="w-5 h-5" />,
+    executionMode: 'maf-workflow',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'Product Launch Strategy',
+    description: 'Go-to-market planning and analysis',
+    template: 'Product Launch Strategy: Market readiness assessment, target audience analysis, competitive positioning, pricing strategy, distribution channels, marketing campaigns, success metrics, and risk mitigation.',
+    icon: <Rocket className="w-5 h-5" />,
+    executionMode: 'code',
+    depth: 'standard',
+  },
+  {
+    title: 'Patent Analysis',
+    description: 'IP portfolio and innovation trends',
+    template: 'Patent & IP Analysis: Technology landscape mapping, patent portfolio strength, innovation trends, competitive IP positioning, freedom to operate assessment, litigation risks, and licensing opportunities.',
+    icon: <Lightbulb className="w-5 h-5" />,
+    executionMode: 'workflow',
+    depth: 'comprehensive',
+  },
+  {
+    title: 'Regulatory Compliance',
+    description: 'Industry regulations and compliance requirements',
+    template: 'Regulatory Compliance Analysis: Current regulatory framework, compliance requirements, upcoming regulatory changes, industry best practices, enforcement trends, risk assessment, and compliance strategy recommendations.',
+    icon: <Shield className="w-5 h-5" />,
+    executionMode: 'maf-workflow',
+    depth: 'standard',
+  },
 ];
 
 export default function ResearchForm({ onResearchStart, sessionId }: ResearchFormProps) {
@@ -121,9 +188,11 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
     max_sources: 10,
     include_citations: true,
     execution_mode: 'workflow',
+    document_ids: [],
   });
   
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
 
   // Get current depth info for display
   const currentDepthInfo = DEPTH_INFO[formData.depth];
@@ -138,11 +207,12 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.topic.trim() && sessionId) {
-      // Include session_id and optional model override in the request
+      // Include session_id, optional model override, and selected documents in the request
       startResearchMutation.mutate({ 
         ...formData, 
         session_id: sessionId,
-        model_deployment: selectedModel
+        model_deployment: selectedModel,
+        document_ids: selectedDocumentIds,
       });
     }
   };
@@ -238,6 +308,37 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
             <p className="text-xs text-slate-500 mt-1">
               Describe your research topic in detail. You can use Quick Tasks above for inspiration.
             </p>
+          </div>
+
+          {/* Document Upload and Selection */}
+          <div className="space-y-4 p-4 bg-slate-800 rounded-lg border border-slate-600">
+            <div className="flex items-center space-x-2 mb-3">
+              <FileText className="w-5 h-5 text-primary-400" />
+              <h3 className="text-sm font-semibold text-slate-200">
+                Research Documents (Optional)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Upload new documents or select from previously uploaded files to include in your research context.
+              Documents will be processed and combined with web search results.
+            </p>
+
+            {/* File Uploader */}
+            {sessionId && (
+              <FileUploader
+                sessionId={sessionId}
+                onFilesProcessed={(fileIds) => {
+                  // Auto-select newly uploaded files
+                  setSelectedDocumentIds(prev => [...new Set([...prev, ...fileIds])]);
+                }}
+              />
+            )}
+
+            {/* Document Selector */}
+            <DocumentSelector
+              selectedDocumentIds={selectedDocumentIds}
+              onSelectionChange={setSelectedDocumentIds}
+            />
           </div>
 
           {/* Research Depth */}

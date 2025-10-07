@@ -7,6 +7,7 @@ export interface ResearchRequest {
   execution_mode: 'workflow' | 'code' | 'maf-workflow';
   session_id?: string; // Optional session ID to use existing session
   model_deployment?: string; // Optional: Override model selection
+  document_ids?: string[]; // Optional: List of document IDs to include
 }
 
 export interface ResearchResponse {

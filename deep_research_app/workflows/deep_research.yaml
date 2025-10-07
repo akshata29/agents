@@ -32,6 +32,11 @@ variables:
     default: true
     description: "Whether to include citations in the final report"
   
+  - name: document_context
+    type: string
+    default: ""
+    description: "Pre-uploaded document context to include in research"
+  
   - name: research_plan
     type: object
     description: "Generated research plan with subtopics and approach"
@@ -83,6 +88,7 @@ tasks:
       context:
         research_plan: "${research_plan}"
         aspect: "core_concepts"
+        document_context: "${document_context}"
     outputs:
       result: core_concepts
     timeout: 600
@@ -102,6 +108,7 @@ tasks:
       context:
         research_plan: "${research_plan}"
         aspect: "current_state"
+        document_context: "${document_context}"
     outputs:
       result: current_state
     timeout: 600
@@ -121,6 +128,7 @@ tasks:
       context:
         research_plan: "${research_plan}"
         aspect: "applications"
+        document_context: "${document_context}"
     outputs:
       result: applications
     timeout: 600
@@ -140,6 +148,7 @@ tasks:
       context:
         research_plan: "${research_plan}"
         aspect: "challenges"
+        document_context: "${document_context}"
     outputs:
       result: challenges
     timeout: 600
@@ -159,6 +168,7 @@ tasks:
       context:
         research_plan: "${research_plan}"
         aspect: "future_trends"
+        document_context: "${document_context}"
     outputs:
       result: future_trends
     timeout: 600

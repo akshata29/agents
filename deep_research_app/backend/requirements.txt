@@ -20,6 +20,12 @@ azure-identity>=1.15.0
 azure-cosmos>=4.5.1
 azure-mgmt-cognitiveservices>=13.5.0  # For Azure OpenAI deployment management
 
+# Document processing dependencies
+azure-ai-documentintelligence  # Document Intelligence SDK for PDF/DOCX
+azure-storage-blob  # Blob storage for file uploads
+python-docx>=1.1.0  # DOCX file processing
+aiohttp>=3.9.0  # Async HTTP client for file downloads
+
 # YAML support (required by framework for workflow definitions)
 pyyaml>=6.0.1
 

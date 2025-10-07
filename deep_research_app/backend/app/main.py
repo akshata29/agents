@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, AsyncIterable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 import structlog
 from dotenv import load_dotenv
@@ -61,6 +61,7 @@ from tavily import TavilyClient
 
 # Import services
 from .services.tavily_search_service import TavilySearchService, Source
+from .services.export_service import ExportService, get_export_service
 
 # Import configuration
 from .config.research_config import (
@@ -2420,6 +2421,130 @@ async def get_models_for_depth(depth: str):
     except Exception as e:
         logger.error(f"Error fetching models for depth {depth}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch models for depth: {str(e)}")
+
+
+# ============================================================
+# EXPORT ENDPOINTS
+# ============================================================
+
+class ExportRequest(BaseModel):
+    """Request model for export endpoint"""
+    execution_id: str
+    include_metadata: bool = True
+
+@app.post("/api/export/{format}")
+async def export_report(
+    format: str,
+    request: ExportRequest
+):
+    """Export research report in specified format.
+    
+    Args:
+        format: Export format (markdown, pdf, html)
+        request: Export request with execution_id and include_metadata
+        
+    Returns:
+        FileResponse with the exported file
+    """
+    try:
+        # Validate format
+        valid_formats = ["markdown", "pdf", "html"]
+        if format not in valid_formats:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid format. Must be one of: {', '.join(valid_formats)}"
+            )
+        
+        # Get execution data - check active executions first, then Cosmos DB
+        execution_data = None
+        final_report = None
+        title = "Research Report"
+        
+        if request.execution_id in active_executions:
+            # Active execution - get from memory
+            execution_data = active_executions[request.execution_id]
+            final_report = execution_data.get("results", {}).get("final_report")
+            title = execution_data.get("topic", "Research Report")
+        else:
+            # Historical execution - load from Cosmos DB
+            try:
+                logger.info("Loading historical execution from Cosmos DB for export", execution_id=request.execution_id)
+                
+                from app.persistence.cosmos_memory import get_cosmos_store
+                cosmos = get_cosmos_store()
+                await cosmos.initialize()
+                
+                run = await cosmos.get_run(request.execution_id)
+                
+                if not run:
+                    raise HTTPException(status_code=404, detail=f"Execution {request.execution_id} not found")
+                
+                # Get final report from stored data
+                final_report = run.research_report
+                title = run.metadata.get("topic", "Research Report") if run.metadata else "Research Report"
+                
+                logger.info("Loaded historical execution for export", execution_id=request.execution_id)
+                
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error("Error loading historical execution for export", execution_id=request.execution_id, error=str(e))
+                raise HTTPException(status_code=500, detail=f"Error loading execution: {str(e)}")
+        
+        if not final_report:
+            raise HTTPException(status_code=404, detail="No report content found for this execution")
+        
+        # Generate export ID
+        export_id = f"{request.execution_id}_{int(datetime.now().timestamp())}"
+        
+        # Get export service
+        export_service = get_export_service()
+        
+        # Export based on format
+        if format == "markdown":
+            file_path = await export_service.export_markdown(
+                report_content=final_report,
+                title=title,
+                export_id=export_id,
+                include_metadata=request.include_metadata
+            )
+            media_type = "text/markdown"
+            filename = f"{title.replace(' ', '_')}.md"
+            
+        elif format == "pdf":
+            file_path = await export_service.export_pdf(
+                report_content=final_report,
+                title=title,
+                export_id=export_id,
+                include_metadata=request.include_metadata
+            )
+            media_type = "application/pdf"
+            filename = f"{title.replace(' ', '_')}.pdf"
+            
+        elif format == "html":
+            file_path = await export_service.export_html(
+                report_content=final_report,
+                title=title,
+                export_id=export_id,
+                include_metadata=request.include_metadata
+            )
+            media_type = "text/html"
+            filename = f"{title.replace(' ', '_')}.html"
+        
+        logger.info(f"Export successful", format=format, export_id=export_id, file_path=file_path)
+        
+        # Return file as download - FileResponse automatically sets Content-Disposition when filename is provided
+        return FileResponse(
+            path=file_path,
+            media_type=media_type,
+            filename=filename
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Export failed", format=format, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
 @app.websocket("/ws/research/{execution_id}")

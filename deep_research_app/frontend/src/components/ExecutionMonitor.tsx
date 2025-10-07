@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../api';
 import { WebSocketMessage } from '../types';
+import { ExportDropdown } from './ExportDropdown';
 import {
   Activity,
   CheckCircle,
@@ -454,8 +455,19 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
             {status.result.final_report && status.result.final_report.trim() && (
               <details className="group">
                 <summary className="cursor-pointer p-3 bg-slate-700/50 rounded-lg border border-slate-600 hover:border-success-500/50 transition-all">
-                  <span className="font-semibold text-success-400">📝 Final Research Report</span>
-                  <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-success-400">📝 Final Research Report</span>
+                      <span className="text-xs text-slate-400 ml-2">(Click to expand)</span>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <ExportDropdown
+                        executionId={executionId}
+                        reportContent={status.result.final_report}
+                        reportTitle={status.topic || 'Research Report'}
+                      />
+                    </div>
+                  </div>
                 </summary>
                 <div className="mt-2 p-4 bg-slate-800/50 rounded-lg border border-slate-700 max-h-96 overflow-y-auto">
                   <MarkdownRenderer content={status.result.final_report} />
@@ -519,10 +531,17 @@ export default function ExecutionMonitor({ executionId }: ExecutionMonitorProps)
             {/* Final Report */}
             {status.result.final_report && (
               <div>
-                <h4 className="text-md font-bold text-success-400 mb-3 flex items-center space-x-2">
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Final Research Report</span>
-                </h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-md font-bold text-success-400 flex items-center space-x-2">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Final Research Report</span>
+                  </h4>
+                  <ExportDropdown
+                    executionId={executionId}
+                    reportContent={status.result.final_report}
+                    reportTitle={status.topic || 'Research Report'}
+                  />
+                </div>
                 <div className="p-6 bg-gradient-to-br from-slate-700/50 to-slate-800/50 rounded-lg border-2 border-success-500/30">
                   <div className="prose prose-invert max-w-none">
                     <MarkdownRenderer content={status.result.final_report} />

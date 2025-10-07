@@ -6,6 +6,7 @@ export interface ResearchRequest {
   include_citations: boolean;
   execution_mode: 'workflow' | 'code' | 'maf-workflow';
   session_id?: string; // Optional session ID to use existing session
+  model_deployment?: string; // Optional: Override model selection
 }
 
 export interface ResearchResponse {

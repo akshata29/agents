@@ -1,5 +1,237 @@
 # Advanced Topics & Production Guide
 
+## 🧠 Advanced Prompting Techniques (New in Phase 4)
+
+### Chain-of-Thought (CoT) Reasoning
+
+The framework now includes advanced prompting techniques that improve LLM reasoning quality, particularly for exhaustive research depth.
+
+#### 1. Chain-of-Thought Implementation
+
+```python
+from deep_research_app.backend.app.services.advanced_prompting_service import AdvancedPromptingService
+
+class EnhancedResearchOrchestrator:
+    """
+    Orchestrator with Chain-of-Thought reasoning for complex analysis.
+    """
+    
+    def __init__(self):
+        self.prompting_service = AdvancedPromptingService()
+    
+    async def execute_with_cot(self, topic: str, depth: str) -> Dict[str, Any]:
+        """Execute research with Chain-of-Thought reasoning."""
+        
+        # Check if CoT should be applied (enabled for exhaustive mode)
+        if self.prompting_service.should_use_chain_of_thought(depth):
+            # Apply Chain-of-Thought template for research
+            research_prompt = self.prompting_service.get_chain_of_thought_prompt(
+                base_prompt=f"Research the topic: {topic}",
+                task_type="research"
+            )
+            
+            # Execute with structured reasoning
+            result = await self.execute_research_with_cot(research_prompt)
+            
+            # Apply CoT for synthesis
+            synthesis_prompt = self.prompting_service.get_chain_of_thought_prompt(
+                base_prompt=f"Synthesize findings for: {topic}",
+                task_type="synthesis"
+            )
+            
+            final_report = await self.synthesize_with_cot(synthesis_prompt, result)
+            
+            return final_report
+        else:
+            # Use standard prompting for other depths
+            return await self.execute_standard_research(topic)
+```
+
+**Chain-of-Thought Template Structure:**
+
+The CoT template guides the LLM through 8 structured reasoning steps:
+1. **Problem Understanding** - Clarify the research question
+2. **Context Analysis** - Identify relevant background knowledge
+3. **Information Requirements** - Determine what information is needed
+4. **Source Evaluation** - Assess source credibility and relevance
+5. **Key Findings Extraction** - Extract critical insights
+6. **Relationship Analysis** - Identify patterns and connections
+7. **Synthesis** - Integrate findings into coherent analysis
+8. **Validation** - Verify conclusions against evidence
+
+#### 2. Self-Refinement Loop
+
+The framework implements iterative self-refinement for comprehensive and exhaustive modes:
+
+```python
+class SelfRefiningAgent:
+    """
+    Agent that refines its outputs through iterative critique and improvement.
+    """
+    
+    async def execute_with_refinement(self, 
+                                     initial_draft: str,
+                                     depth: str,
+                                     sources: List[Dict]) -> str:
+        """Execute self-refinement loop."""
+        
+        prompting_service = AdvancedPromptingService()
+        
+        # Determine number of refinement iterations based on depth
+        num_iterations = prompting_service.get_refinement_iterations(depth)
+        # comprehensive: 1 iteration, exhaustive: 3 iterations
+        
+        current_draft = initial_draft
+        
+        for iteration in range(num_iterations):
+            logger.info(f"🔄 Refinement iteration {iteration + 1}/{num_iterations}")
+            
+            # Step 1: Critique current draft
+            critique_prompt = prompting_service.get_critique_prompt(
+                draft=current_draft,
+                sources=sources
+            )
+            
+            critique = await self.llm_client.generate(critique_prompt)
+            
+            # Step 2: Generate improvement suggestions
+            improvement_prompt = prompting_service.get_improvement_prompt(
+                draft=current_draft,
+                critique=critique
+            )
+            
+            improvements = await self.llm_client.generate(improvement_prompt)
+            
+            # Step 3: Revise based on critique and improvements
+            revision_prompt = prompting_service.get_revision_prompt(
+                original_draft=current_draft,
+                critique=critique,
+                improvements=improvements,
+                sources=sources
+            )
+            
+            current_draft = await self.llm_client.generate(revision_prompt)
+            
+            logger.info(f"✅ Refinement iteration {iteration + 1} completed")
+        
+        return current_draft
+```
+
+**Self-Refinement Process:**
+
+1. **Critique Phase**
+   - Evaluates draft on 6 dimensions:
+     - Completeness and coverage
+     - Evidence quality and citation usage
+     - Logical coherence and structure
+     - Depth of analysis
+     - Clarity and accessibility
+     - Accuracy and factual correctness
+
+2. **Improvement Phase**
+   - Generates specific, actionable improvements
+   - Prioritizes based on critique severity
+   - Provides concrete examples
+
+3. **Revision Phase**
+   - Applies improvements while preserving strengths
+   - Maintains factual accuracy
+   - Improves overall quality
+
+#### 3. Depth-Specific Model Configuration
+
+The framework now includes intelligent model selection based on research depth:
+
+```python
+from deep_research_app.backend.app.services.model_config_service import ModelConfigService
+
+class IntelligentModelSelector:
+    """
+    Service for depth-aware model selection and configuration.
+    """
+    
+    def __init__(self):
+        self.config_service = ModelConfigService()
+    
+    def get_optimal_config(self, depth: str) -> ModelConfig:
+        """Get optimal model configuration for research depth."""
+        
+        config = self.config_service.get_model_config_for_depth(depth)
+        
+        # Returns depth-optimized settings:
+        # - Quick: gpt-4o-mini, temp=0.3, 2K tokens (speed-focused)
+        # - Standard: gpt-4o, temp=0.5, 4K tokens (balanced)
+        # - Comprehensive: gpt-4.1, temp=0.6, 8K tokens (quality-focused)
+        # - Exhaustive: o1-preview, temp=0.7, 16K tokens (reasoning models)
+        
+        return config
+    
+    def get_available_models(self, depth: str) -> List[str]:
+        """Get recommended models for specific depth."""
+        
+        models = self.config_service.get_available_models_for_depth(depth)
+        
+        # Returns depth-appropriate model recommendations:
+        # - Quick: Fast models (gpt-4o-mini, gpt-4.1-mini)
+        # - Standard: Balanced models (gpt-4o, gpt-4.1)
+        # - Comprehensive: Advanced models (gpt-4.1, gpt-4)
+        # - Exhaustive: Reasoning models (o1-preview, o1-mini, o3-mini)
+        
+        return models
+```
+
+**Model Configuration by Depth:**
+
+| Depth | Primary Model | Temperature | Max Tokens | Use Case |
+|-------|--------------|-------------|------------|----------|
+| Quick | gpt-4o-mini | 0.3 | 2,000 | Fast overviews, simple queries |
+| Standard | gpt-4o | 0.5 | 4,000 | Balanced analysis, general research |
+| Comprehensive | gpt-4.1 | 0.6 | 8,000 | Detailed analysis, citations |
+| Exhaustive | o1-preview | 0.7 | 16,000 | Deep reasoning, complex synthesis |
+
+#### 4. Frontend Integration
+
+The UI now includes an AI Model Selection component with auto/manual modes:
+
+```typescript
+// ModelSelector.tsx - Auto-selects optimal model based on depth
+<ModelSelector
+  depth={selectedDepth}
+  selectedModel={selectedModel}
+  onModelSelect={setSelectedModel}
+/>
+```
+
+**Features:**
+- **Auto Mode**: Automatically selects recommended model for depth
+- **Manual Mode**: Allows user override from available deployments
+- **Visual Indicators**: Shows reasoning models (🧠), temperature, max tokens
+- **Deployment Info**: Displays model version, capacity, SKU details
+
+### Best Practices for Advanced Prompting
+
+1. **Use Chain-of-Thought for Complex Tasks**
+   - Enable for exhaustive research mode
+   - Apply to synthesis and analysis phases
+   - Particularly effective with reasoning models (o1, o3)
+
+2. **Apply Self-Refinement Strategically**
+   - Use for comprehensive (1 iteration) and exhaustive (3 iterations) modes
+   - Skip for quick/standard to maintain speed
+   - Monitor iteration quality to avoid diminishing returns
+
+3. **Select Models Based on Task Complexity**
+   - Quick tasks: Use fast, cost-effective models
+   - Complex reasoning: Use advanced reasoning models
+   - Balance cost vs. quality for production
+
+4. **Monitor and Optimize**
+   - Track refinement effectiveness (quality improvement per iteration)
+   - Measure CoT impact on output quality
+   - Monitor token usage and costs
+
+---
+
 ## 🚀 Performance Optimization
 
 ### Concurrent Execution Strategies

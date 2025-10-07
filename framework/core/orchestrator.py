@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 # Microsoft Agent Framework imports
 from agent_framework import (
     SequentialBuilder, ConcurrentBuilder, MagenticBuilder, 
-    WorkflowBuilder, ChatMessage, Role, WorkflowOutputEvent, TextContent
+    WorkflowBuilder, ChatMessage, Role, WorkflowOutputEvent, TextContent,
+    AgentRunEvent, ExecutorCompletedEvent, ExecutorInvokedEvent
 )
 from azure.identity import AzureCliCredential
 
@@ -219,13 +220,17 @@ class MagenticOrchestrator:
         agents = agent_ids or []
         logger.info("Executing sequential pattern", agents=agents)
         
-        # Get agent instances
+        # Get agent instances and build name mapping for later use
         agent_instances = []
+        agent_display_names = []  # Track agent display names for mapping
         for agent_name in agents:
             agent = await self.agent_registry.get_agent(agent_name)
             if not agent:
                 raise ValueError(f"Agent not found: {agent_name}")
             agent_instances.append(agent)
+            # Store the display name (agent.name) for mapping
+            display_name = getattr(agent, 'name', agent_name)
+            agent_display_names.append(display_name)
         
         # Set up MCP tools if provided
         if tools:
@@ -243,18 +248,92 @@ class MagenticOrchestrator:
         messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=task)])]
         
         results = []
+        
         # workflow.run() returns WorkflowRunResult (list of events)
         workflow_run = await workflow.run(messages)
-        for event in workflow_run:
+        
+        # Track all events for debugging
+        logger.info(f"Processing {len(workflow_run)} workflow events")
+        
+        # MAF SequentialBuilder returns the FINAL CONVERSATION in WorkflowOutputEvent
+        # We need to extract individual agent messages from that conversation
+        final_conversation = None
+        
+        for i, event in enumerate(workflow_run):
+            event_type = type(event).__name__
+            logger.info(f"Event {i}: {event_type}")
+            
             if isinstance(event, WorkflowOutputEvent):
-                # WorkflowOutputEvent has data (list of ChatMessages) and source_executor_id
-                # ChatMessage has 'text' property, not 'content'
-                last_message = event.data[-1] if event.data else None
-                results.append({
-                    "agent": event.source_executor_id,
-                    "content": last_message.text if last_message else "",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                # WorkflowOutputEvent.data contains the full conversation (list of ChatMessages)
+                agent_id = event.source_executor_id
+                logger.info(f"  WorkflowOutputEvent from {agent_id}, messages count: {len(event.data) if event.data else 0}")
+                
+                # Store the final conversation
+                if agent_id == "end" and event.data:
+                    final_conversation = event.data
+                    logger.info(f"  Captured final conversation with {len(final_conversation)} messages")
+        
+        # Extract individual agent outputs from the final conversation
+        # Based on MAF SequentialBuilder pattern: each agent adds a message with author_name
+        if final_conversation:
+            logger.info("Extracting individual agent outputs from conversation...")
+            
+            # Build dynamic agent name mapping from display names to agent IDs
+            # This allows the code to work with ANY agents, not just hardcoded ones
+            agent_name_mapping = {}
+            for i, agent_id in enumerate(agents):
+                if i < len(agent_display_names):
+                    display_name = agent_display_names[i]
+                    agent_name_mapping[display_name] = agent_id
+                    logger.debug(f"Mapped '{display_name}' -> '{agent_id}'")
+            
+            for i, message in enumerate(final_conversation):
+                # Debug: log each message details
+                role = getattr(message, 'role', None)
+                role_value = role.value if role else 'unknown'
+                author_name = getattr(message, 'author_name', None)
+                content = getattr(message, 'text', '')
+                logger.info(f"  Message {i}: role={role_value}, author_name='{author_name}', content_len={len(content)}")
+                
+                # Skip user messages
+                if role and role_value == 'user':
+                    logger.info(f"    Skipping user message")
+                    continue
+                
+                # Handle cases where author_name might be None, 'None', or missing
+                # In some MAF configurations, author_name might not be set properly
+                if content:
+                    if author_name and author_name != 'None' and str(author_name).lower() != 'none':
+                        # Try to map to agent ID using author_name
+                        agent_id = agent_name_mapping.get(author_name)
+                        if not agent_id:
+                            # If not in mapping, try lowercase version or use as-is
+                            agent_id = author_name.lower().replace(' ', '_')
+                            logger.warning(f"    ⚠️ Author '{author_name}' not in mapping, using sanitized: {agent_id}")
+                        else:
+                            logger.info(f"    ✅ Extracted output from '{author_name}' (agent_id={agent_id}): {len(content)} chars")
+                    else:
+                        # Fallback: assign to agents in order based on ACTUAL agent_ids provided
+                        # This ensures it works with any set of agents (writer/reviewer/summarizer, or custom ones)
+                        agent_idx = len(results)
+                        if agent_idx < len(agents):
+                            agent_id = agents[agent_idx]
+                            logger.warning(f"    ⚠️ No valid author_name (got '{author_name}'), using fallback agent [{agent_idx}]: {agent_id}")
+                        else:
+                            agent_id = f'agent_{agent_idx}'
+                            logger.warning(f"    ⚠️ No valid author_name and index out of range, using: {agent_id}")
+                    
+                    results.append({
+                        "agent": agent_id,
+                        "content": content,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                else:
+                    logger.warning(f"    ⚠️ Skipping message - no content")
+        
+        logger.info(f"Total results extracted: {len(results)}")
+        for i, result in enumerate(results):
+            logger.info(f"  Result {i}: agent={result['agent']}, content_len={len(result.get('content', ''))}")
         
         return {
             "pattern": "sequential",
@@ -274,13 +353,17 @@ class MagenticOrchestrator:
         agents = agent_ids or []
         logger.info("Executing concurrent pattern", agents=agents)
         
-        # Get agent instances
+        # Get agent instances and build name mapping
         agent_instances = []
+        agent_display_names = []  # Track agent display names for mapping
         for agent_name in agents:
             agent = await self.agent_registry.get_agent(agent_name)
             if not agent:
                 raise ValueError(f"Agent not found: {agent_name}")
             agent_instances.append(agent)
+            # Store the display name (agent.name) for mapping
+            display_name = getattr(agent, 'name', agent_name)
+            agent_display_names.append(display_name)
         
         # Set up MCP tools if provided
         if tools:
@@ -297,18 +380,77 @@ class MagenticOrchestrator:
         # ChatMessage requires 'contents' (list of TextContent), not 'content'
         messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=task)])]
         
-        results = []
+        # Execute and capture aggregated messages from ConcurrentBuilder
+        # ConcurrentBuilder's aggregator yields a list[ChatMessage] with all agent responses
+        aggregated_messages = None
         workflow_run = await workflow.run(messages)
         for event in workflow_run:
             if isinstance(event, WorkflowOutputEvent):
-                last_message = event.data[-1] if event.data else None
-                results.append({
-                    "agent": event.source_executor_id,
-                    "content": last_message.text if last_message else "",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                # The aggregator executor (id="aggregator") returns list[ChatMessage]
+                # Format: [user_prompt?, assistant1, assistant2, assistant3, ...]
+                # Each assistant message has author_name for agent identification
+                if event.source_executor_id == "aggregator" and event.data:
+                    aggregated_messages = event.data
+                    logger.info(f"Received aggregated messages: {len(event.data)} messages")
+                    for msg in event.data:
+                        logger.info(f"  Message: role={msg.role.value}, author={getattr(msg, 'author_name', 'unknown')}, len={len(getattr(msg, 'text', ''))}")
         
-        # Aggregate results
+        # Extract individual agent outputs from aggregated conversation
+        results = []
+        
+        # Build dynamic agent name mapping from display names to agent IDs
+        # This works with ANY agents, not just hardcoded ones
+        agent_name_mapping = {}
+        for i, agent_id in enumerate(agents):
+            if i < len(agent_display_names):
+                display_name = agent_display_names[i]
+                agent_name_mapping[display_name] = agent_id
+                logger.debug(f"Mapped '{display_name}' -> '{agent_id}'")
+        
+        if aggregated_messages:
+            logger.info(f"Extracting individual agent outputs from {len(aggregated_messages)} messages")
+            
+            for message in aggregated_messages:
+                # Skip user messages
+                if message.role.value == 'user':
+                    continue
+                
+                # Extract author_name and content
+                author_name = getattr(message, 'author_name', None)
+                content = getattr(message, 'text', '')
+                
+                # Handle cases where author_name might be None, 'None', or missing
+                if content:
+                    if author_name and author_name != 'None' and str(author_name).lower() != 'none':
+                        # Try to map to agent ID using author_name
+                        agent_id = agent_name_mapping.get(author_name)
+                        if not agent_id:
+                            # If not in mapping, sanitize and use
+                            agent_id = author_name.lower().replace(' ', '_')
+                            logger.warning(f"  Author '{author_name}' not in mapping, using sanitized: {agent_id}")
+                        else:
+                            logger.info(f"  Extracted output from '{author_name}' (agent_id={agent_id}): {len(content)} chars")
+                    else:
+                        # Fallback: assign to agents in order based on ACTUAL agent_ids provided
+                        agent_idx = len(results)
+                        if agent_idx < len(agents):
+                            agent_id = agents[agent_idx]
+                            logger.warning(f"  No valid author_name (got '{author_name}'), using fallback agent [{agent_idx}]: {agent_id}")
+                        else:
+                            agent_id = f'agent_{agent_idx}'
+                            logger.warning(f"  No valid author_name and index out of range, using: {agent_id}")
+                    
+                    results.append({
+                        "agent": agent_id,
+                        "content": content,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+        
+        logger.info(f"Total concurrent results extracted: {len(results)}")
+        for i, result in enumerate(results):
+            logger.info(f"  Result {i}: agent={result['agent']}, content_len={len(result.get('content', ''))}")
+        
+        # Aggregate results for backward compatibility
         agent_outputs = {}
         for result in results:
             agent_outputs[result["agent"]] = result["content"]

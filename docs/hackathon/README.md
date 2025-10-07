@@ -51,10 +51,20 @@ Welcome to the comprehensive technical documentation for building multi-agent ap
 - Testing and debugging
 
 ### 8. [Advanced Topics](./08-advanced-topics.md)
+- **NEW: Chain-of-Thought & Self-Refinement (Phase 4)**
+- Advanced prompting techniques
+- Intelligent model selection
 - Performance optimization
 - Security considerations
 - Monitoring and observability
 - Production deployment
+
+### 9. [Phase 4 Updates - Advanced AI Techniques](./PHASE4_UPDATES.md) ⭐ NEW
+- Chain-of-Thought reasoning implementation
+- Self-Refinement loop (iterative quality improvement)
+- Depth-aware model selection and configuration
+- Frontend model selection UI
+- Integration guide and examples
 
 ## 🎯 Hackathon Projects Supported
 

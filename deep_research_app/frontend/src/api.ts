@@ -90,6 +90,22 @@ export const apiClient = {
     const response = await api.delete(`/api/sessions/${sessionId}`);
     return response.data;
   },
+
+  // Model selection APIs
+  getDeployments: async () => {
+    const response = await api.get('/api/models/deployments');
+    return response.data;
+  },
+
+  getModelConfig: async () => {
+    const response = await api.get('/api/models/config');
+    return response.data;
+  },
+
+  getModelForDepth: async (depth: string) => {
+    const response = await api.get(`/api/models/for-depth/${depth}`);
+    return response.data;
+  },
 };
 
 export default api;

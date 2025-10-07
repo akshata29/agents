@@ -46,6 +46,9 @@ from framework.config.settings import Settings
 from framework.patterns.sequential import SequentialPattern
 from framework.patterns.concurrent import ConcurrentPattern
 
+# Import our advanced services
+from app.services.advanced_prompting_service import AdvancedPromptingService
+
 # Microsoft Agent Framework imports
 from agent_framework import (
     BaseAgent, AgentRunResponse, AgentRunResponseUpdate,
@@ -59,184 +62,29 @@ from tavily import TavilyClient
 # Import services
 from .services.tavily_search_service import TavilySearchService, Source
 
+# Import configuration
+from .config.research_config import (
+    DEPTH_CONFIGS, DEPTH_PROMPTS,
+    get_depth_config, get_depth_prompts, get_research_aspects
+)
+
+# Import validation service
+from .services.research_validation import get_validator, ValidationResult
+
 # Import MAF workflow module
 from . import maf_workflow
+
+# Import advanced research techniques
+from .advanced_research import (
+    assess_source_quality, filter_sources_by_tier,
+    analyze_research_gaps, multi_perspective_analysis,
+    fact_check_claims, SourceTier, PerspectiveRole
+)
 
 # Import routers
 from app.routers import sessions
 
 logger = structlog.get_logger(__name__)
-
-# Depth Configuration - Controls research comprehensiveness
-DEPTH_CONFIGS = {
-    "quick": {
-        "max_sources": 5,
-        "research_aspects": 2,  # Core concepts + current state only
-        "synthesis_iterations": 1,
-        "report_min_words": 500,
-        "report_max_words": 1500,
-        "timeout": 300,  # 5 minutes
-        "detail_level": "overview",
-        "description": "Fast overview with essential insights"
-    },
-    "standard": {
-        "max_sources": 10,
-        "research_aspects": 3,  # Add challenges
-        "synthesis_iterations": 2,
-        "report_min_words": 1500,
-        "report_max_words": 3000,
-        "timeout": 900,  # 15 minutes
-        "detail_level": "detailed",
-        "description": "Balanced analysis with moderate depth"
-    },
-    "comprehensive": {
-        "max_sources": 20,
-        "research_aspects": 5,  # All 5 aspects
-        "synthesis_iterations": 3,
-        "report_min_words": 3000,
-        "report_max_words": 6000,
-        "timeout": 2400,  # 40 minutes
-        "detail_level": "comprehensive",
-        "description": "Deep analysis with extensive research"
-    },
-    "exhaustive": {
-        "max_sources": 50,
-        "research_aspects": 5,
-        "synthesis_iterations": 5,  # Multiple refinement passes
-        "report_min_words": 6000,
-        "report_max_words": 15000,
-        "timeout": 7200,  # 2 hours
-        "detail_level": "exhaustive",
-        "description": "Scholarly depth with comprehensive coverage",
-        "enable_fact_checking": True,
-        "enable_multi_perspective": True
-    }
-}
-
-# Depth-Specific Prompts
-DEPTH_PROMPTS = {
-    "quick": {
-        "planner": """Create a focused research plan for: {topic}
-        
-Prioritize breadth over depth. Identify 2-3 key aspects to cover.
-Target: Quick overview with essential insights.
-Keep the plan concise and actionable.""",
-        
-        "researcher": """Provide a concise overview focusing on key facts and main points.
-Be direct and to-the-point. Avoid excessive detail.
-Target length: Brief summaries.""",
-        
-        "writer": """Write a clear, concise research report (500-1500 words).
-
-Structure:
-- Executive Summary (2-3 paragraphs)
-- Key Findings (3-5 bullet points)
-- Conclusion (1 paragraph)
-
-Focus on essential insights. Be direct and actionable."""
-    },
-    
-    "standard": {
-        "planner": """Create a balanced research plan for: {topic}
-        
-Cover major aspects with moderate depth. Identify 3-4 key dimensions.
-Target: Well-rounded analysis with supporting details.
-Balance breadth and depth appropriately.""",
-        
-        "researcher": """Provide detailed analysis with supporting evidence and examples.
-Include context and explanations. Back claims with data.
-Target length: Substantial paragraphs with depth.""",
-        
-        "writer": """Write a comprehensive research report (1500-3000 words).
-
-Structure:
-- Executive Summary
-- Introduction & Background
-- Main Analysis (3-4 sections)
-- Key Insights & Implications
-- Conclusion
-- References
-
-Provide balanced analysis with evidence and examples."""
-    },
-    
-    "comprehensive": {
-        "planner": """Create a thorough research plan for: {topic}
-        
-Examine all major dimensions comprehensively. Identify 5+ key aspects.
-Include historical context, current state, challenges, opportunities, and future outlook.
-Target: In-depth exploration with critical analysis.""",
-        
-        "researcher": """Conduct deep investigation with extensive evidence, multiple perspectives, and critical analysis.
-Explore nuances, interconnections, and implications.
-Provide detailed context, examples, and expert insights.
-Target length: Extensive sections with scholarly depth.""",
-        
-        "writer": """Write an in-depth research report (3000-6000 words).
-
-Structure:
-- Executive Summary
-- Introduction & Context
-- Methodology & Approach
-- Detailed Analysis (5-7 sections)
-- Critical Evaluation
-- Implications & Recommendations
-- Conclusion
-- Comprehensive References
-- Appendices (if needed)
-
-Provide thorough analysis with extensive evidence, critical thinking, and actionable insights."""
-    },
-    
-    "exhaustive": {
-        "planner": """Create an exhaustive research plan for: {topic}
-        
-Leave no stone unturned. Examine all aspects, edge cases, historical evolution, and future implications.
-Identify 7+ dimensions including technical, business, social, ethical, and practical considerations.
-Plan for multi-perspective analysis and deep investigation.
-Target: Scholarly comprehensive treatment.""",
-        
-        "researcher": """Conduct comprehensive investigation with exhaustive detail.
-
-Requirements:
-- Explore topic from multiple angles (historical, current, future)
-- Include expert opinions, case studies, and empirical evidence
-- Analyze interconnections and system-level implications
-- Consider edge cases and alternative perspectives
-- Provide extensive context and background
-- Challenge assumptions and explore controversies
-
-Target length: Extensive scholarly sections (1000+ words each).""",
-        
-        "writer": """Write a scholarly research report (6000-15000 words).
-
-Structure:
-- Abstract (250 words)
-- Executive Summary (500 words)
-- Introduction & Background (1000 words)
-- Literature Review & Context
-- Methodology
-- Comprehensive Analysis (8-12 detailed sections)
-- Multi-Perspective Evaluation
-- Critical Discussion
-- Future Directions & Research Gaps
-- Limitations & Constraints
-- Practical Recommendations
-- Conclusion
-- Extensive References (30+ sources)
-- Detailed Appendices
-- Glossary of Terms
-
-Requirements:
-- Provide exhaustive coverage with scholarly rigor
-- Include extensive evidence from diverse sources
-- Analyze from multiple perspectives
-- Discuss controversies and competing viewpoints
-- Provide actionable, well-justified recommendations
-- Meet minimum 6000 word count
-- Maintain academic quality throughout"""
-    }
-}
 
 # Global state
 workflow_engine: Optional[WorkflowEngine] = None
@@ -257,7 +105,9 @@ class AIResearchAgent(BaseAgent):
         description: str,
         azure_client: AzureOpenAI,
         model: str,
-        system_prompt: str
+        system_prompt: str,
+        temperature: float = 0.7,
+        max_tokens: int = 2000
     ):
         # Initialize Microsoft Agent Framework's BaseAgent
         super().__init__(name=name, description=description)
@@ -267,6 +117,8 @@ class AIResearchAgent(BaseAgent):
         self.azure_client = azure_client
         self.model = model
         self.system_prompt = system_prompt
+        self.temperature = temperature
+        self.max_tokens = max_tokens
     
     async def run(
         self,
@@ -315,8 +167,8 @@ class AIResearchAgent(BaseAgent):
                         {"role": "system", "content": self.system_prompt},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=0.7,
-                    max_tokens=2000
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens
                 )
                 
                 result_text = response.choices[0].message.content
@@ -403,7 +255,9 @@ class TavilySearchAgent(BaseAgent):
         description: str,
         tavily_client: TavilyClient,
         azure_client: AzureOpenAI,
-        model: str
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 2000
     ):
         # Initialize Microsoft Agent Framework's BaseAgent
         super().__init__(name=name, description=description)
@@ -413,6 +267,8 @@ class TavilySearchAgent(BaseAgent):
         self.tavily = tavily_client
         self.azure_client = azure_client
         self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
     
     async def run(
         self,
@@ -464,8 +320,8 @@ class TavilySearchAgent(BaseAgent):
                             {"role": "system", "content": "Extract a concise search query (max 300 chars) from the user's research request. Return ONLY the search query, nothing else."},
                             {"role": "user", "content": f"Extract search query from: {task[:800]}"}
                         ],
-                        temperature=0.3,
-                        max_tokens=100
+                        temperature=0.3,  # Lower temperature for extraction task
+                        max_tokens=100  # Short output for query extraction
                     )
                     search_query = query_extraction_response.choices[0].message.content.strip()
                     # Safety check - if still too long, truncate intelligently
@@ -511,8 +367,8 @@ Provide a comprehensive, well-structured response."""
                         {"role": "system", "content": "You are an expert researcher who synthesizes information from multiple sources."},
                         {"role": "user", "content": synthesis_prompt}
                     ],
-                    temperature=0.7,
-                    max_tokens=2000
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens
                 )
                 
                 result_text = response.choices[0].message.content
@@ -686,7 +542,8 @@ async def execute_research_programmatically(
     topic: str,
     depth: str,
     max_sources: int,
-    include_citations: bool
+    include_citations: bool,
+    model_deployment: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Execute research using programmatic code-based approach with framework patterns.
@@ -699,6 +556,55 @@ async def execute_research_programmatically(
     results = {}
     
     try:
+        # ============================================================
+        # PHASE 4: Model Selection by Depth
+        # ============================================================
+        # Get optimal model configuration for this depth
+        from .services.azure_openai_deployment_service import get_deployment_service
+        from .services.model_config_service import ModelConfigService
+        
+        model_config = None
+        try:
+            subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
+            resource_group = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP")
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+            account_name = endpoint.split("//")[1].split(".")[0] if "//" in endpoint else ""
+            
+            if all([subscription_id, resource_group, account_name]):
+                async with get_deployment_service(subscription_id, resource_group, account_name) as service:
+                    summary = await service.get_deployments_summary()
+                    chat_models = summary.get("chat_models", [])
+                
+                config_service = ModelConfigService(available_deployments=chat_models)
+                model_config = config_service.get_model_config_for_depth(depth)
+                
+                logger.info(
+                    f"🤖 Model selected for {depth} depth: {model_config.model_name} "
+                    f"(deployment={model_config.deployment_name}, temp={model_config.temperature}, "
+                    f"tokens={model_config.max_tokens})"
+                )
+            else:
+                logger.warning("Azure deployment config incomplete, using defaults")
+        except Exception as e:
+            logger.warning(f"Failed to fetch model config, using defaults: {e}")
+        
+        # Fallback to default if model selection failed
+        if not model_config:
+            from .services.model_config_service import ModelConfig
+            model_config = ModelConfig(
+                deployment_name=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o"),
+                model_name="gpt-4o",
+                temperature=0.7 if depth == "exhaustive" else 0.5,
+                max_tokens=8000 if depth == "exhaustive" else 4000,
+                use_reasoning_model=False
+            )
+            logger.info(f"Using fallback model: {model_config.model_name}")
+        
+        # Allow frontend to override model selection
+        if model_deployment and model_deployment != model_config.deployment_name:
+            logger.info(f"🎯 User override: Using model deployment '{model_deployment}' instead of '{model_config.deployment_name}'")
+            model_config.deployment_name = model_deployment
+        
         # Get depth configuration
         depth_config = DEPTH_CONFIGS.get(depth, DEPTH_CONFIGS["comprehensive"])
         logger.info(f"🎯 Research depth: {depth}", config=depth_config)
@@ -735,7 +641,7 @@ async def execute_research_programmatically(
         
         # Use depth-specific planning prompt
         planner_prompt = planner_prompt_template.format(topic=topic)
-        planner_prompt += f"\n\nTarget: {depth_config['description']}"
+        planner_prompt += f"\n\nTarget: {depth_config['detail_level']} analysis"
         planner_prompt += f"\nMax sources: {max_sources}"
         planner_prompt += f"\nReport length: {depth_config['report_min_words']}-{depth_config['report_max_words']} words"
         
@@ -786,6 +692,13 @@ async def execute_research_programmatically(
             raise ValueError("TAVILY_API_KEY environment variable not set")
         
         tavily_service = TavilySearchService(api_key=tavily_api_key)
+        
+        # Initialize Azure OpenAI client for multi-pass refinement and advanced features
+        azure_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+        )
         
         # Calculate queries per aspect based on depth
         # Total sources = queries_per_aspect * results_per_query * num_aspects
@@ -840,22 +753,17 @@ Example format:
 ["query 1", "query 2"]
 """
             
-            # Get Azure client
-            azure_client = AzureOpenAI(
-                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
-                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-            )
+            # NOTE: Use the outer azure_client and model_config from execute_research_programmatically scope
             
             response = await asyncio.to_thread(
                 azure_client.chat.completions.create,
-                model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o"),
+                model=model_config.deployment_name,
                 messages=[
                     {"role": "system", "content": "You are a research query generator. Return only valid JSON."},
                     {"role": "user", "content": query_generation_prompt}
                 ],
-                temperature=0.7,
-                max_tokens=500
+                temperature=model_config.temperature,
+                max_tokens=500  # Keep lower for query generation
             )
             
             queries_text = response.choices[0].message.content.strip()
@@ -909,8 +817,20 @@ Example format:
                     
                     logger.info(f"📚 Search returned {len(sources)} sources for query: {query[:50]}...")
                     
-                    # Create synthesis prompt
-                    synthesis_prompt = f"""Based on the following search results for "{query}":
+                    # Create synthesis prompt (with Chain-of-Thought for exhaustive)
+                    if depth == "exhaustive":
+                        # Use Chain-of-Thought prompting for deeper analysis
+                        prompting_service = AdvancedPromptingService()
+                        synthesis_prompt = prompting_service.get_chain_of_thought_prompt(
+                            topic=topic,
+                            query=query,
+                            context=context,
+                            prompt_type="synthesis"
+                        )
+                        logger.info(f"🧠 Using Chain-of-Thought prompting for query: {query[:50]}...")
+                    else:
+                        # Standard synthesis for other depths
+                        synthesis_prompt = f"""Based on the following search results for "{query}":
 
 <CONTEXT>
 {context}
@@ -920,23 +840,18 @@ Extract key learnings and insights. Be concise but information-dense.
 Include citations using [1], [2] format from the context above.
 Focus on factual information, metrics, and specific details."""
                     
-                    # Get Azure client
-                    azure_client = AzureOpenAI(
-                        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-                        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
-                        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
-                    )
+                    # NOTE: Use the outer azure_client and model_config from execute_research_programmatically scope
                     
                     # Synthesize findings
                     synthesis_response = await asyncio.to_thread(
                         azure_client.chat.completions.create,
-                        model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o"),
+                        model=model_config.deployment_name,
                         messages=[
                             {"role": "system", "content": "You are an expert researcher who synthesizes information from sources with proper citations."},
                             {"role": "user", "content": synthesis_prompt}
                         ],
-                        temperature=0.7,
-                        max_tokens=2000
+                        temperature=model_config.temperature,
+                        max_tokens=model_config.max_tokens
                     )
                     
                     findings = synthesis_response.choices[0].message.content
@@ -1005,6 +920,118 @@ Focus on factual information, metrics, and specific details."""
         
         logger.info(f"🔗 After deduplication: {len(unique_sources)} unique sources")
         
+        # ============================================================
+        # EXHAUSTIVE MODE: Multi-Pass Refinement with Gap Analysis
+        # ============================================================
+        if depth == "exhaustive" and depth_config.get("synthesis_iterations", 1) > 1:
+            logger.info("🔄 EXHAUSTIVE MODE: Starting multi-pass refinement")
+            
+            num_iterations = depth_config["synthesis_iterations"]
+            iteration_findings = []
+            iteration_sources = list(unique_sources)  # Start with deduplicated sources
+            
+            for iteration in range(1, num_iterations):
+                logger.info(f"📊 Refinement Iteration {iteration}/{num_iterations-1}")
+                
+                # Update progress
+                if execution_id in active_executions:
+                    active_executions[execution_id]["current_task"] = f"Iteration {iteration}: Gap Analysis"
+                    active_executions[execution_id]["progress"] = 50.0 + (iteration / num_iterations) * 20.0
+                
+                # Synthesize current findings for gap analysis
+                current_findings = "\n\n".join([results.get(key, "") for key in aggregated_findings.keys()])
+                
+                # Analyze gaps
+                gap_analysis_result = await analyze_research_gaps(
+                    topic=topic,
+                    iteration=iteration,
+                    previous_findings=current_findings,
+                    previous_sources=iteration_sources,
+                    azure_client=azure_client,
+                    model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o")
+                )
+                
+                iteration_findings.append({
+                    "iteration": iteration,
+                    "gap_analysis": gap_analysis_result["gap_analysis"],
+                    "source_quality": gap_analysis_result["source_quality"]
+                })
+                
+                logger.info(
+                    f"Gap analysis iteration {iteration}",
+                    source_tiers=gap_analysis_result["source_quality"]
+                )
+                
+                # Extract recommended queries from gap analysis
+                gap_text = gap_analysis_result["gap_analysis"]
+                if "RECOMMENDED_QUERIES:" in gap_text:
+                    # Simple extraction - in production would use more robust parsing
+                    queries_section = gap_text.split("RECOMMENDED_QUERIES:")[1]
+                    if "SOURCE_QUALITY_NEEDS:" in queries_section:
+                        queries_section = queries_section.split("SOURCE_QUALITY_NEEDS:")[0]
+                    
+                    # Execute additional searches based on gap analysis
+                    logger.info(f"🔍 Iteration {iteration}: Executing gap-filling searches")
+                    
+                    # Parse queries (simplified - assumes bullet format)
+                    gap_queries = [
+                        line.strip().lstrip('-').strip() 
+                        for line in queries_section.split('\n') 
+                        if line.strip() and line.strip().startswith('-')
+                    ][:3]  # Limit to 3 queries per iteration
+                    
+                    for gap_query in gap_queries:
+                        if gap_query:
+                            try:
+                                gap_search_results, gap_sources = await tavily_service.search_and_format(
+                                    gap_query,
+                                    max_results=3
+                                )
+                                iteration_sources.extend(gap_sources)
+                                logger.info(f"  Gap search: {gap_query[:50]}... → {len(gap_sources)} sources")
+                            except Exception as e:
+                                logger.error(f"Gap search failed", query=gap_query, error=str(e))
+                
+                # Update progress
+                if execution_id in active_executions:
+                    active_executions[execution_id]["current_task"] = f"Iteration {iteration}: Additional Research"
+                    active_executions[execution_id]["progress"] = 50.0 + ((iteration + 0.5) / num_iterations) * 20.0
+            
+            # Deduplicate iteration sources
+            unique_iteration_sources = []
+            seen_urls = set()
+            for source in iteration_sources:
+                source_url = source.url if hasattr(source, 'url') else source.get('url', '')
+                if source_url and source_url not in seen_urls:
+                    unique_iteration_sources.append(source)
+                    seen_urls.add(source_url)
+            
+            # Replace unique_sources with refined sources
+            unique_sources = unique_iteration_sources
+            
+            # Store iteration details in results
+            results["refinement_iterations"] = iteration_findings
+            results["total_iterations"] = num_iterations
+            
+            logger.info(
+                f"✅ Multi-pass refinement completed",
+                iterations=num_iterations - 1,
+                final_sources=len(unique_sources)
+            )
+            
+            # Update progress
+            if execution_id in active_executions:
+                active_executions[execution_id]["completed_tasks"].append(
+                    f"Multi-pass Refinement ({num_iterations-1} iterations, {len(unique_sources)} total sources)"
+                )
+        
+        # Format sources list
+            if source_url and source_url not in seen_urls:
+                unique_sources.append(source)
+                seen_urls.add(source_url)
+        
+        logger.info(f"🔗 After deduplication: {len(unique_sources)} unique sources")
+        
         # Format sources list
         sources_list = "\n".join([
             f"[{idx+1}] {source.title if hasattr(source, 'title') else source.get('title', 'Untitled')}\n    {source.url if hasattr(source, 'url') else source.get('url', '')}"
@@ -1016,7 +1043,7 @@ Focus on factual information, metrics, and specific details."""
         
         comprehensive_context = f"""Research Topic: {topic}
 
-Research Depth: {depth} ({depth_config['description']})
+Research Depth: {depth} ({depth_config['detail_level']} analysis)
 Target Length: {depth_config['report_min_words']}-{depth_config['report_max_words']} words
 
 Research Plan:
@@ -1028,14 +1055,23 @@ Research Findings:
 Sources ({len(unique_sources)} total):
 {sources_list}
 
-INSTRUCTIONS FOR WRITER AGENT:
+==============================================
+INSTRUCTIONS FOR WRITER AGENT (FIRST AGENT):
+==============================================
 {writer_instructions}
 
-YOUR TASK: Write the ACTUAL RESEARCH REPORT about "{topic}" using the research findings above. 
-DO NOT write feedback or critique - write the actual research content that will be delivered to the user.
-Include sections, findings, analysis, and conclusions based on the research above.
+YOUR TASK: Write the COMPLETE, FULL-LENGTH RESEARCH REPORT about "{topic}" using the research findings above.
 
-CRITICAL REQUIREMENT - SOURCES SECTION:
+CRITICAL REQUIREMENTS:
+1. Write a FULL REPORT of {depth_config['report_min_words']}-{depth_config['report_max_words']} words
+2. DO NOT write just a summary - write the ENTIRE comprehensive report
+3. Include ALL sections specified in the structure above
+4. Each section should be substantive and detailed
+5. Use the research findings provided to populate each section
+6. Include analysis, evidence, examples, and insights
+7. Write in a scholarly, professional tone
+
+MANDATORY SOURCES SECTION:
 You MUST include a complete "## Sources" or "## References" section at the END of your report.
 List ALL {len(unique_sources)} sources provided above using this exact format:
 
@@ -1051,7 +1087,9 @@ List ALL {len(unique_sources)} sources provided above using this exact format:
 
 DO NOT skip the sources section. It is MANDATORY.
 
-INSTRUCTIONS FOR EDITOR AGENT:
+==============================================
+INSTRUCTIONS FOR EDITOR AGENT (SECOND AGENT):
+==============================================
 Take the research report from the writer and enhance it - improve clarity, structure, and flow while preserving all content.
 Return the ENHANCED REPORT, not commentary about it.
 CRITICAL: The Sources/References section MUST be preserved in full. Do not remove or modify the sources.
@@ -1066,6 +1104,8 @@ Return the SUMMARY OF FINDINGS, not an evaluation of report quality."""
         # Use SequentialPattern for the remaining workflow
         # Note: Microsoft Agent Framework doesn't allow duplicate agent instances
         # So we use: writer → reviewer → summarizer (removed duplicate writer)
+        logger.info("🔄 Creating SequentialPattern with agents: writer → reviewer → summarizer")
+        
         final_phases_pattern = SequentialPattern(
             agents=["writer", "reviewer", "summarizer"],
             name="synthesis_validation_finalization",
@@ -1073,62 +1113,425 @@ Return the SUMMARY OF FINDINGS, not an evaluation of report quality."""
             config={"preserve_context": True, "fail_fast": False}
         )
         
+        logger.info("🚀 Executing SequentialPattern...")
         final_context = await orchestrator_instance.execute(
             task=comprehensive_context,
             pattern=final_phases_pattern
         )
+        logger.info("✅ SequentialPattern execution completed")
         
         # Extract results from sequential execution with better error handling
         if final_context and final_context.result:
             logger.info(f"Final context result structure: {final_context.result.keys() if isinstance(final_context.result, dict) else type(final_context.result)}")
             
-            # Check if we have a summary field (contains the final synthesized output)
-            if "summary" in final_context.result:
-                # The summary contains the final output from all agents
-                final_summary = final_context.result.get("summary", "")
-                results["draft_report"] = final_summary
-                results["final_report"] = final_summary
-                results["executive_summary"] = final_summary
-                logger.info("Using summary field for final phases", summary_length=len(final_summary))
+            # Log the full result for debugging
+            logger.info(f"📋 Full final_context.result keys: {list(final_context.result.keys()) if isinstance(final_context.result, dict) else 'Not a dict'}")
+            if isinstance(final_context.result, dict) and "results" in final_context.result:
+                logger.info(f"📋 Number of agent responses: {len(final_context.result['results'])}")
+                for idx, resp in enumerate(final_context.result["results"]):
+                    agent_name = resp.get("agent", f"agent_{idx}")
+                    content_length = len(resp.get("content", ""))
+                    content_preview = resp.get("content", "")[:200]
+                    logger.info(f"  Agent {idx} ({agent_name}): {content_length} chars - Preview: {content_preview}...")
             
-            # Also check for individual results
+            # Priority: Use individual agent results (more granular)
             if "results" in final_context.result:
                 responses = final_context.result["results"]
                 logger.info(f"Got {len(responses)} responses from final phases")
                 
-                # Extract individual agent responses if available
+                # Extract individual agent responses
                 if len(responses) >= 1:
                     writer_output = responses[0].get("content", "")
                     if writer_output:
                         results["draft_report"] = writer_output
-                        results["final_report"] = writer_output
+                        logger.info(f"📝 Writer output: {len(writer_output)} characters")
+                
                 if len(responses) >= 2:
                     reviewer_output = responses[1].get("content", "")
                     if reviewer_output:
-                        results["validation_results"] = reviewer_output
+                        # Reviewer enhances the report, this should be the final version
+                        results["final_report"] = reviewer_output
+                        logger.info(f"✨ Reviewer output (final): {len(reviewer_output)} characters")
+                
                 if len(responses) >= 3:
                     summarizer_output = responses[2].get("content", "")
                     if summarizer_output:
                         results["executive_summary"] = summarizer_output
+                        logger.info(f"📊 Summarizer output: {len(summarizer_output)} characters")
+                
+                # If reviewer didn't produce output, use writer's draft as final
+                if "final_report" not in results and "draft_report" in results:
+                    results["final_report"] = results["draft_report"]
+                    logger.warning("⚠️ No reviewer output, using draft as final report")
                 
                 logger.info("sequential_phases_completed", phases=[3, 4, 5], 
                            draft_length=len(results.get("draft_report", "")),
-                           validation_length=len(results.get("validation_results", "")),
+                           final_length=len(results.get("final_report", "")),
                            summary_length=len(results.get("executive_summary", "")))
+            
+            # Fallback: Use summary field only if no individual results
+            elif "summary" in final_context.result:
+                final_summary = final_context.result.get("summary", "")
+                logger.warning(f"⚠️ No individual results, using summary field ({len(final_summary)} chars)")
+                results["draft_report"] = final_summary
+                results["final_report"] = final_summary
+                results["executive_summary"] = final_summary
+            
             else:
-                logger.warning(f"⚠️ No 'results' key in final_context.result. Keys: {final_context.result.keys()}")
+                logger.warning(f"⚠️ No 'results' or 'summary' key in final_context.result. Keys: {final_context.result.keys()}")
         else:
             logger.warning(f"⚠️ Final context or result is None")
         
         # Update progress: All phases complete
         if execution_id in active_executions:
             active_executions[execution_id]["current_task"] = None
-            active_executions[execution_id]["progress"] = 100.0
+            active_executions[execution_id]["progress"] = 90.0
             active_executions[execution_id]["completed_tasks"] = [
                 "Phase 1: Research Planning (SequentialPattern)",
                 f"Phase 2: Multi-Query Deep Research ({len(unique_sources)} unique sources)",
                 "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)"
             ]
+        
+        # ============================================================
+        # ADVANCED AI: Self-Refinement Loop (Comprehensive/Exhaustive)
+        # ============================================================
+        prompting_service = AdvancedPromptingService()
+        
+        if prompting_service.should_use_refinement(depth):
+            refinement_iterations = prompting_service.get_refinement_iterations(depth)
+            logger.info(f"🔄 Starting Self-Refinement Loop: {refinement_iterations} iterations")
+            
+            final_report = results.get("final_report", results.get("draft_report", ""))
+            
+            if final_report:
+                for iteration in range(refinement_iterations):
+                    logger.info(f"🔄 Refinement Iteration {iteration + 1}/{refinement_iterations}")
+                    
+                    if execution_id in active_executions:
+                        active_executions[execution_id]["current_task"] = f"Self-Refinement {iteration + 1}/{refinement_iterations}"
+                        active_executions[execution_id]["progress"] = 90.0 + (iteration / refinement_iterations) * 5.0
+                    
+                    # Step 1: Critique the current draft
+                    critique_prompt = prompting_service.get_critique_prompt(final_report)
+                    
+                    critique_response = await asyncio.to_thread(
+                        azure_client.chat.completions.create,
+                        model=model_config.deployment_name,
+                        messages=[
+                            {"role": "system", "content": "You are an expert research critic providing detailed, constructive feedback."},
+                            {"role": "user", "content": critique_prompt}
+                        ],
+                        temperature=model_config.temperature,
+                        max_tokens=model_config.max_tokens // 2  # Use half tokens for critique
+                    )
+                    
+                    critique = critique_response.choices[0].message.content
+                    logger.info(f"📝 Critique generated: {len(critique)} characters")
+                    
+                    # Step 2: Generate improvement suggestions
+                    improvement_prompt = prompting_service.get_improvement_prompt(final_report, critique)
+                    
+                    improvement_response = await asyncio.to_thread(
+                        azure_client.chat.completions.create,
+                        model=model_config.deployment_name,
+                        messages=[
+                            {"role": "system", "content": "You are a research improvement strategist providing actionable enhancement plans."},
+                            {"role": "user", "content": improvement_prompt}
+                        ],
+                        temperature=model_config.temperature,
+                        max_tokens=model_config.max_tokens // 2
+                    )
+                    
+                    improvements = improvement_response.choices[0].message.content
+                    logger.info(f"💡 Improvements suggested: {len(improvements)} characters")
+                    
+                    # Step 3: Revise the draft
+                    revision_prompt = prompting_service.get_revision_prompt(final_report, improvements)
+                    
+                    revision_response = await asyncio.to_thread(
+                        azure_client.chat.completions.create,
+                        model=model_config.deployment_name,
+                        messages=[
+                            {"role": "system", "content": "You are an expert research writer revising drafts based on improvement plans."},
+                            {"role": "user", "content": revision_prompt}
+                        ],
+                        temperature=model_config.temperature,
+                        max_tokens=model_config.max_tokens
+                    )
+                    
+                    revised_report = revision_response.choices[0].message.content
+                    
+                    # Quality check: Only use revision if it's substantive
+                    if revised_report and len(revised_report) > len(final_report) * 0.8:
+                        logger.info(f"✅ Revision accepted: {len(revised_report)} characters (was {len(final_report)})")
+                        final_report = revised_report
+                        results["final_report"] = revised_report
+                        results[f"refinement_{iteration + 1}"] = {
+                            "critique": critique,
+                            "improvements": improvements,
+                            "revised_length": len(revised_report)
+                        }
+                    else:
+                        logger.warning(f"⚠️ Revision rejected (too short or empty)")
+                
+                logger.info(f"✅ Self-Refinement Complete: Final report length = {len(final_report)} characters")
+        
+        # ============================================================
+        # VALIDATION: Research Quality Assessment
+        # ============================================================
+        # Validate research quality for comprehensive/exhaustive modes
+        if depth in ["comprehensive", "exhaustive"]:
+            logger.info("🔍 Validating research quality")
+            
+            if execution_id in active_executions:
+                active_executions[execution_id]["current_task"] = "Quality Validation"
+                active_executions[execution_id]["progress"] = 91.0
+            
+            # Get the final report for validation
+            final_report = results.get("final_report", results.get("draft_report", ""))
+            
+            if final_report:
+                validator = get_validator()
+                validation_result = await validator.validate_research_quality(
+                    report=final_report,
+                    depth=depth,
+                    sources=unique_sources,
+                    metadata={
+                        "research_aspects": depth_config.get("research_aspects", 0),
+                        "max_sources": depth_config.get("max_sources", 0)
+                    }
+                )
+                
+                results["validation"] = {
+                    "passed": validation_result.passed,
+                    "score": validation_result.score,
+                    "issues": validation_result.issues,
+                    "warnings": validation_result.warnings,
+                    "metrics": validation_result.metrics
+                }
+                
+                logger.info("✅ Research validation completed", 
+                           passed=validation_result.passed,
+                           score=f"{validation_result.score:.2f}",
+                           issues_count=len(validation_result.issues),
+                           warnings_count=len(validation_result.warnings))
+                
+                # Log validation details
+                if validation_result.issues:
+                    logger.warning("⚠️ Validation issues", issues=validation_result.issues)
+                if validation_result.warnings:
+                    logger.info("📋 Validation warnings", warnings=validation_result.warnings)
+                
+                # ============================================================
+                # MULTI-PASS REFINEMENT: Iterative Quality Improvement
+                # ============================================================
+                # Trigger refinement if validation fails (score < 0.75)
+                if not validation_result.passed and validation_result.score < 0.75:
+                    max_refinement_passes = 3 if depth == "comprehensive" else 5
+                    refinement_pass = 0
+                    
+                    logger.info("🔄 Initiating multi-pass refinement", 
+                               max_passes=max_refinement_passes,
+                               current_score=f"{validation_result.score:.2f}")
+                    
+                    while refinement_pass < max_refinement_passes and not validation_result.passed:
+                        refinement_pass += 1
+                        
+                        if execution_id in active_executions:
+                            active_executions[execution_id]["current_task"] = f"Refinement Pass {refinement_pass}/{max_refinement_passes}"
+                            active_executions[execution_id]["progress"] = 91.0 + (refinement_pass / max_refinement_passes) * 4.0
+                        
+                        logger.info(f"🔧 Refinement pass {refinement_pass}/{max_refinement_passes}")
+                        
+                        # Build refinement context from validation results
+                        refinement_context = f"""
+# Research Quality Issues Detected
+
+## Validation Score: {validation_result.score:.2f}
+
+## Critical Issues:
+{chr(10).join(['- ' + issue for issue in validation_result.issues]) if validation_result.issues else 'None'}
+
+## Warnings:
+{chr(10).join(['- ' + warning for warning in validation_result.warnings]) if validation_result.warnings else 'None'}
+
+## Quality Metrics:
+{chr(10).join([f'- {k}: {v}' for k, v in validation_result.metrics.items()])}
+
+## Current Report:
+{final_report}
+
+## Available Sources ({len(unique_sources)}):
+{chr(10).join([f"- [{s.get('title', 'Untitled')}]({s.get('url', 'No URL')}) - {s.get('source_type', 'Unknown type')}" for s in unique_sources[:10]])}
+{'... and ' + str(len(unique_sources) - 10) + ' more sources' if len(unique_sources) > 10 else ''}
+
+## Instructions:
+Please refine the research report to address the above issues. Focus on:
+1. Meeting word count targets ({depth_config['report_min_words']}-{depth_config['report_max_words']} words)
+2. Including more high-quality citations from available sources
+3. Improving structural depth with required sections
+4. Enhancing analysis depth with critical thinking
+5. Leveraging source quality (prioritize peer-reviewed, government, and news sources)
+
+Provide an improved version that maintains accuracy while addressing validation gaps.
+"""
+                        
+                        # Create refinement agent (enhance reviewer capabilities)
+                        try:
+                            refinement_result = await orchestrator.execute_agent(
+                                agent_name="reviewer",
+                                input_message=refinement_context,
+                                context={
+                                    "task_type": "research_refinement",
+                                    "depth": depth,
+                                    "refinement_pass": refinement_pass,
+                                    "validation_issues": validation_result.issues,
+                                    "current_report": final_report,
+                                    "sources": unique_sources
+                                },
+                                execution_id=execution_id
+                            )
+                            
+                            refined_report = refinement_result.get("output", "")
+                            
+                            if refined_report and len(refined_report) > len(final_report) * 0.8:
+                                # Update final report with refined version
+                                final_report = refined_report
+                                results["final_report"] = refined_report
+                                
+                                # Re-validate the refined report
+                                validation_result = await validator.validate_research_quality(
+                                    report=refined_report,
+                                    depth=depth,
+                                    sources=unique_sources,
+                                    metadata={
+                                        "research_aspects": depth_config.get("research_aspects", 0),
+                                        "max_sources": depth_config.get("max_sources", 0),
+                                        "refinement_pass": refinement_pass
+                                    }
+                                )
+                                
+                                logger.info(f"✨ Refinement pass {refinement_pass} completed",
+                                           new_score=f"{validation_result.score:.2f}",
+                                           passed=validation_result.passed)
+                                
+                                # Update validation results
+                                results["validation"] = {
+                                    "passed": validation_result.passed,
+                                    "score": validation_result.score,
+                                    "issues": validation_result.issues,
+                                    "warnings": validation_result.warnings,
+                                    "metrics": validation_result.metrics,
+                                    "refinement_passes": refinement_pass
+                                }
+                                
+                                # Break if validation passes or score improved significantly
+                                if validation_result.passed:
+                                    logger.info("🎯 Validation passed after refinement!")
+                                    break
+                                    
+                            else:
+                                logger.warning(f"⚠️ Refinement pass {refinement_pass} produced insufficient output, skipping")
+                                break
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Refinement pass {refinement_pass} failed", error=str(e))
+                            break
+                    
+                    # Log final refinement status
+                    if validation_result.passed:
+                        logger.info("✅ Multi-pass refinement successful", 
+                                   final_score=f"{validation_result.score:.2f}",
+                                   passes_used=refinement_pass)
+                    else:
+                        logger.warning("⚠️ Refinement completed without passing validation",
+                                      final_score=f"{validation_result.score:.2f}",
+                                      passes_used=refinement_pass)
+        
+        # ============================================================
+        # EXHAUSTIVE MODE: Multi-Perspective Analysis & Fact-Checking
+        # ============================================================
+        if depth == "exhaustive" and depth_config.get("enable_multi_perspective"):
+            logger.info("🎭 EXHAUSTIVE MODE: Multi-perspective analysis")
+            
+            # Update progress
+            if execution_id in active_executions:
+                active_executions[execution_id]["current_task"] = "Multi-Perspective Analysis"
+                active_executions[execution_id]["progress"] = 92.0
+            
+            # Get the final report for analysis
+            final_report = results.get("final_report", results.get("draft_report", ""))
+            
+            if final_report:
+                # Run multi-perspective analysis
+                perspectives = await multi_perspective_analysis(
+                    report=final_report,
+                    azure_client=azure_client,
+                    model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o")
+                )
+                
+                results["multi_perspective_analysis"] = perspectives
+                logger.info("✅ Multi-perspective analysis completed", 
+                           perspectives=list(perspectives.keys()))
+        
+        if depth == "exhaustive" and depth_config.get("enable_fact_checking"):
+            logger.info("✓ EXHAUSTIVE MODE: Fact-checking layer")
+            
+            # Update progress
+            if execution_id in active_executions:
+                active_executions[execution_id]["current_task"] = "Fact-Checking"
+                active_executions[execution_id]["progress"] = 95.0
+            
+            # Get the final report for fact-checking
+            final_report = results.get("final_report", results.get("draft_report", ""))
+            
+            if final_report:
+                # Run fact-checking
+                fact_check_results = await fact_check_claims(
+                    report=final_report,
+                    sources=unique_sources,
+                    azure_client=azure_client,
+                    model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o"),
+                    tavily_search_service=tavily_service
+                )
+                
+                results["fact_check"] = fact_check_results
+                logger.info("✅ Fact-checking completed",
+                           claims_analyzed=fact_check_results["sources_analyzed"])
+        
+        # Source Quality Assessment (for all modes)
+        logger.info("📊 Assessing source quality")
+        source_assessments = [assess_source_quality(s) for s in unique_sources]
+        source_quality_summary = {
+            "tier_1_count": len([a for a in source_assessments if a.tier.value == "peer_reviewed"]),
+            "tier_2_count": len([a for a in source_assessments if a.tier.value == "primary_source"]),
+            "tier_3_count": len([a for a in source_assessments if a.tier.value == "reputable_media"]),
+            "tier_4_count": len([a for a in source_assessments if a.tier.value == "general_web"]),
+            "average_quality_score": sum(a.score for a in source_assessments) / len(source_assessments) if source_assessments else 0
+        }
+        results["source_quality"] = source_quality_summary
+        logger.info("Source quality distribution", **source_quality_summary)
+        
+        # Final progress update
+        if execution_id in active_executions:
+            active_executions[execution_id]["current_task"] = None
+            active_executions[execution_id]["progress"] = 100.0
+            
+            # Update completed tasks based on what was actually run
+            completed_tasks = [
+                "Phase 1: Research Planning (SequentialPattern)",
+                f"Phase 2: Multi-Query Deep Research ({len(unique_sources)} unique sources)",
+                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)"
+            ]
+            
+            if "refinement_iterations" in results:
+                completed_tasks.append(f"Multi-pass Refinement ({results['total_iterations']-1} iterations)")
+            if "multi_perspective_analysis" in results:
+                completed_tasks.append("Multi-Perspective Analysis (Technical/Business/Critical)")
+            if "fact_check" in results:
+                completed_tasks.append("Fact-Checking Layer")
+            
+            active_executions[execution_id]["completed_tasks"] = completed_tasks
         
         # Store sources in results for API response (convert Source objects to dicts)
         results["sources"] = [
@@ -1237,6 +1640,7 @@ class ResearchRequest(BaseModel):
         description="Execution mode: workflow (declarative YAML), code (programmatic patterns), or maf-workflow (MAF graph-based)"
     )
     session_id: Optional[str] = Field(default=None, description="Optional session ID to use existing session")
+    model_deployment: Optional[str] = Field(default=None, description="Optional: Override automatic model selection with specific deployment name")
 
 
 class ResearchResponse(BaseModel):
@@ -1888,6 +2292,136 @@ async def list_executions(request: Request):
     return {"executions": executions}
 
 
+@app.get("/api/models/deployments")
+async def get_deployments():
+    """
+    Get all Azure OpenAI deployments available in the AI Foundry resource.
+    Returns chat and embedding model deployments with metadata.
+    """
+    try:
+        from .services.azure_openai_deployment_service import get_deployment_service
+        
+        # Get configuration from environment
+        subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
+        resource_group = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP")
+        
+        # Extract account name from endpoint
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+        account_name = endpoint.split("//")[1].split(".")[0] if "//" in endpoint else ""
+        
+        if not all([subscription_id, resource_group, account_name]):
+            logger.error("Missing Azure configuration for deployment service")
+            raise HTTPException(
+                status_code=500,
+                detail="Azure OpenAI configuration incomplete. Check AZURE_SUBSCRIPTION_ID, AZURE_AI_FOUNDRY_RESOURCE_GROUP, and AZURE_OPENAI_ENDPOINT"
+            )
+        
+        async with get_deployment_service(subscription_id, resource_group, account_name) as service:
+            summary = await service.get_deployments_summary()
+            return summary
+            
+    except Exception as e:
+        logger.error(f"Error fetching deployments: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch deployments: {str(e)}")
+
+
+@app.get("/api/models/config")
+async def get_model_configs():
+    """
+    Get model configurations for all research depth levels.
+    Shows recommended models, temperature, max_tokens for each depth.
+    """
+    try:
+        from .services.azure_openai_deployment_service import get_deployment_service
+        from .services.model_config_service import ModelConfigService
+        
+        # Get configuration from environment
+        subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
+        resource_group = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP")
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+        account_name = endpoint.split("//")[1].split(".")[0] if "//" in endpoint else ""
+        
+        if not all([subscription_id, resource_group, account_name]):
+            logger.error("Missing Azure configuration")
+            raise HTTPException(status_code=500, detail="Azure configuration incomplete")
+        
+        # Fetch available deployments
+        async with get_deployment_service(subscription_id, resource_group, account_name) as service:
+            summary = await service.get_deployments_summary()
+            chat_models = summary.get("chat_models", [])
+        
+        # Create model config service with available deployments
+        config_service = ModelConfigService(available_deployments=chat_models)
+        
+        # Get configurations for all depth levels
+        all_configs = config_service.get_all_depth_configs()
+        
+        return {
+            "depth_configs": all_configs,
+            "available_chat_models": chat_models
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching model configs: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch model configs: {str(e)}")
+
+
+@app.get("/api/models/for-depth/{depth}")
+async def get_models_for_depth(depth: str):
+    """
+    Get recommended models for a specific research depth.
+    
+    Args:
+        depth: Research depth (quick, standard, comprehensive, exhaustive)
+    """
+    if depth not in ["quick", "standard", "comprehensive", "exhaustive"]:
+        raise HTTPException(status_code=400, detail=f"Invalid depth: {depth}")
+    
+    try:
+        from .services.azure_openai_deployment_service import get_deployment_service
+        from .services.model_config_service import ModelConfigService
+        
+        # Get configuration from environment
+        subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
+        resource_group = os.getenv("AZURE_AI_FOUNDRY_RESOURCE_GROUP")
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
+        account_name = endpoint.split("//")[1].split(".")[0] if "//" in endpoint else ""
+        
+        # Fetch available deployments
+        async with get_deployment_service(subscription_id, resource_group, account_name) as service:
+            summary = await service.get_deployments_summary()
+            chat_models = summary.get("chat_models", [])
+        
+        # Create model config service
+        config_service = ModelConfigService(available_deployments=chat_models)
+        
+        # Get recommended models for this depth
+        recommended_models = config_service.get_available_models_for_depth(depth)
+        
+        # Get optimal config
+        model_config = config_service.get_model_config_for_depth(depth)
+        
+        # Get the depth config to extract preferred models
+        from .services.model_config_service import MODEL_CONFIGS_BY_DEPTH
+        depth_config = MODEL_CONFIGS_BY_DEPTH.get(depth, {})
+        
+        # Return config in the format expected by frontend
+        return {
+            "deployment_name": model_config.deployment_name,
+            "model_name": model_config.model_name,
+            "temperature": model_config.temperature,
+            "max_tokens": model_config.max_tokens,
+            "use_reasoning_model": model_config.use_reasoning_model,
+            "preferred_models": depth_config.get("preferred_models", []),
+            "depth": depth,
+            "recommended_models": recommended_models
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching models for depth {depth}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch models for depth: {str(e)}")
+
+
 @app.websocket("/ws/research/{execution_id}")
 async def websocket_research_updates(websocket: WebSocket, execution_id: str):
     """WebSocket endpoint for real-time research updates."""
@@ -2482,7 +3016,8 @@ async def execute_code_based_research(
     topic: str,
     depth: str,
     max_sources: int,
-    include_citations: bool
+    include_citations: bool,
+    model_deployment: Optional[str] = None
 ):
     """Background task to execute code-based (programmatic) research with orchestrator."""
     try:
@@ -2496,7 +3031,8 @@ async def execute_code_based_research(
             topic=topic,
             depth=depth,
             max_sources=max_sources,
-            include_citations=include_citations
+            include_citations=include_citations,
+            model_deployment=model_deployment
         )
         
         # Update execution status with results

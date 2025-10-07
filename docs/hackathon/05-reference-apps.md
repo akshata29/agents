@@ -511,6 +511,139 @@ graph TB
 - **PDF Report Generation**: Professional equity research briefs
 - **Real-time Progress Tracking**: WebSocket-based updates
 
+### NEW: Phase 4 Advanced Features
+
+#### 1. Advanced Prompting Service
+
+The Deep Research App now includes sophisticated prompting techniques:
+
+**Chain-of-Thought Reasoning:**
+```python
+from deep_research_app.backend.app.services.advanced_prompting_service import AdvancedPromptingService
+
+# Automatic Chain-of-Thought for exhaustive mode
+prompting_service = AdvancedPromptingService()
+
+if prompting_service.should_use_chain_of_thought(depth):
+    # Apply 8-step structured reasoning template
+    synthesis_prompt = prompting_service.get_chain_of_thought_prompt(
+        base_prompt="Synthesize research findings...",
+        task_type="synthesis"
+    )
+```
+
+**Self-Refinement Loop:**
+```python
+# Iterative quality improvement
+# - Comprehensive mode: 1 refinement iteration
+# - Exhaustive mode: 3 refinement iterations
+
+for iteration in range(num_iterations):
+    # 1. Critique current draft
+    critique = prompting_service.get_critique_prompt(draft, sources)
+    
+    # 2. Generate improvements
+    improvements = prompting_service.get_improvement_prompt(draft, critique)
+    
+    # 3. Revise based on feedback
+    draft = prompting_service.get_revision_prompt(draft, critique, improvements)
+```
+
+**Implementation Location:**
+- Service: `deep_research_app/backend/app/services/advanced_prompting_service.py`
+- Integration: `deep_research_app/backend/app/main.py` (lines 820-835, 1165-1260)
+- Tests: `deep_research_app/backend/test_advanced_prompting.py`
+
+#### 2. Depth-Aware Model Selection
+
+**Model Configuration Service:**
+```python
+from deep_research_app.backend.app.services.model_config_service import ModelConfigService
+
+config_service = ModelConfigService()
+
+# Get optimal configuration for research depth
+model_config = config_service.get_model_config_for_depth("exhaustive")
+# Returns: o1-preview, temp=0.7, max_tokens=16000, use_reasoning_model=True
+
+# Get available models for depth
+available_models = config_service.get_available_models_for_depth("comprehensive")
+# Returns: ["gpt-4.1", "gpt-4", "gpt-4o", ...]
+```
+
+**Depth-Specific Configurations:**
+
+| Depth | Model | Temp | Tokens | Features |
+|-------|-------|------|--------|----------|
+| Quick | gpt-4o-mini | 0.3 | 2,000 | Fast, cost-effective |
+| Standard | gpt-4o | 0.5 | 4,000 | Balanced performance |
+| Comprehensive | gpt-4.1 | 0.6 | 8,000 | Quality + Citations + Self-Refinement (1 iter) |
+| Exhaustive | o1-preview | 0.7 | 16,000 | Reasoning + CoT + Self-Refinement (3 iters) |
+
+#### 3. UI Model Selection Component
+
+**Frontend Integration:**
+```typescript
+// ModelSelector.tsx - Smart model selection UI
+<ModelSelector
+  depth={selectedDepth}              // Auto-adjusts recommendations
+  selectedModel={selectedModel}       // Tracks current selection
+  onModelSelect={setSelectedModel}    // Callback for changes
+/>
+```
+
+**Features:**
+- **Auto Mode** (Default): Automatically selects optimal model for depth
+- **Manual Mode**: User can override from available Azure OpenAI deployments
+- **Visual Indicators**: 
+  - 🧠 Reasoning model badge for o1/o3 models
+  - Temperature and max tokens display
+  - Model capacity and SKU information
+- **Depth-Specific Explanations**: Context-aware help text
+
+**Implementation:**
+- Component: `deep_research_app/frontend/src/components/ModelSelector.tsx`
+- API Integration: `deep_research_app/frontend/src/api.ts`
+- Backend Endpoints: 
+  - `GET /api/models/deployments` - List Azure OpenAI deployments
+  - `GET /api/models/config` - Get current model configuration
+  - `GET /api/models/for-depth/{depth}` - Get recommended config for depth
+
+#### 4. Integration in Research Flow
+
+```python
+# main.py - Research execution with Phase 4 features
+
+async def execute_research_programmatically(
+    agent_registry: AgentRegistry,
+    orchestrator_instance: MagenticOrchestrator,
+    execution_id: str,
+    topic: str,
+    depth: str,
+    max_sources: int,
+    include_citations: bool,
+    model_deployment: Optional[str] = None  # NEW: User-selected model
+) -> Dict[str, Any]:
+    
+    # Phase 1: Get model configuration
+    config_service = ModelConfigService()
+    model_config = config_service.get_model_config_for_depth(depth, model_deployment)
+    
+    # Phase 2: Apply Chain-of-Thought (if exhaustive)
+    prompting_service = AdvancedPromptingService()
+    if prompting_service.should_use_chain_of_thought(depth):
+        synthesis_prompt = prompting_service.get_chain_of_thought_prompt(...)
+    
+    # Phase 3: Generate initial draft
+    initial_draft = await writer_agent.execute(synthesis_prompt)
+    
+    # Phase 4: Apply Self-Refinement (if comprehensive/exhaustive)
+    if prompting_service.should_use_refinement(depth):
+        final_draft = await self_refine_draft(initial_draft, depth)
+    
+    return final_draft
+```
+
 ### Hackathon Implementation Insights
 
 #### For Data Retrieval Optimization Project:

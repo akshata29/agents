@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '../api';
 import { ResearchRequest } from '../types';
 import { Search, Loader2, Lightbulb, Brain, TrendingUp, Shield, Rocket, BookOpen, Globe, Info } from 'lucide-react';
+import { ModelSelector } from './ModelSelector';
 
 interface QuickTask {
   title: string;
@@ -121,6 +122,8 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
     include_citations: true,
     execution_mode: 'workflow',
   });
+  
+  const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
 
   // Get current depth info for display
   const currentDepthInfo = DEPTH_INFO[formData.depth];
@@ -135,8 +138,12 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.topic.trim() && sessionId) {
-      // Include session_id in the request
-      startResearchMutation.mutate({ ...formData, session_id: sessionId });
+      // Include session_id and optional model override in the request
+      startResearchMutation.mutate({ 
+        ...formData, 
+        session_id: sessionId,
+        model_deployment: selectedModel
+      });
     }
   };
 
@@ -271,6 +278,13 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
               <p className="text-xs text-slate-300 mt-2">{currentDepthInfo.description}</p>
             </div>
           </div>
+
+          {/* AI Model Selection */}
+          <ModelSelector
+            depth={formData.depth}
+            selectedModel={selectedModel}
+            onModelSelect={setSelectedModel}
+          />
 
           {/* Execution Mode */}
           <div>

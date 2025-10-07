@@ -171,7 +171,7 @@ tasks:
     name: "Synthesize Research Findings"
     type: agent
     agent: "writer"
-    description: "Synthesize all research findings into a comprehensive report"
+    description: "Synthesize all research findings into a comprehensive report with complete source citations"
     depends_on:
       - investigate_core_concepts
       - investigate_current_state
@@ -179,7 +179,22 @@ tasks:
       - investigate_challenges
       - investigate_future_trends
     parameters:
-      task: "Synthesize the following research findings into a comprehensive, well-structured report on: ${research_topic}"
+      task: |
+        Synthesize the following research findings into a comprehensive, well-structured report on: ${research_topic}
+        
+        CRITICAL REQUIREMENT - SOURCES SECTION:
+        You MUST include a complete "## Sources" or "## References" section at the END of your report.
+        List ALL sources from the research findings using this format:
+        
+        ## Sources
+        
+        [1] Source Title
+            URL
+        
+        [2] Source Title
+            URL
+        
+        DO NOT skip the sources section. It is MANDATORY.
       context:
         research_plan: "${research_plan}"
         core_concepts: "${core_concepts}"
@@ -197,14 +212,17 @@ tasks:
 
   # Phase 4: Quality Validation (Sequential Pattern)
   - id: validate_report
-    name: "Validate Research Quality"
+    name: "Enhance and Refine Report"
     type: agent
     agent: "reviewer"
-    description: "Review and validate the research report for quality, accuracy, and completeness"
+    description: "Enhance and refine the research report for improved clarity and structure"
     depends_on:
       - synthesize_findings
     parameters:
-      task: "Review the following research report for quality, accuracy, completeness, and coherence. Provide specific feedback and validation."
+      task: |
+        Take the research report and enhance it - improve clarity, structure, and flow while preserving all content.
+        Return the ENHANCED REPORT, not commentary about it.
+        CRITICAL: The Sources/References section MUST be preserved in full. Do not remove or modify sources.
       content: "${draft_report}"
       context:
         original_topic: "${research_topic}"
@@ -222,11 +240,14 @@ tasks:
     name: "Finalize Research Report"
     type: agent
     agent: "writer"
-    description: "Create the final polished research report incorporating validation feedback"
+    description: "Verify the final research report has all required sections including sources"
     depends_on:
       - validate_report
     parameters:
-      task: "Create the final, polished version of the research report incorporating the validation feedback"
+      task: |
+        Ensure the final research report is complete with all sections.
+        The report must include the Sources/References section with all citations.
+        Return the complete report.
       content: "${draft_report}"
       context:
         validation_feedback: "${validation_results}"
@@ -244,11 +265,11 @@ tasks:
     name: "Create Executive Summary"
     type: agent
     agent: "summarizer"
-    description: "Generate a concise executive summary of the research"
+    description: "Generate a concise executive summary of key findings"
     depends_on:
       - finalize_report
     parameters:
-      task: "Create a concise executive summary of the research report, highlighting key findings, insights, and conclusions"
+      task: "Extract and present the key findings from the research report in a concise executive summary. Return the SUMMARY OF FINDINGS, not an evaluation of report quality."
       content: "${final_report}"
       max_length: 500
     outputs:

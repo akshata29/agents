@@ -56,6 +56,9 @@ from agent_framework import (
 from openai import AzureOpenAI
 from tavily import TavilyClient
 
+# Import services
+from .services.tavily_search_service import TavilySearchService, Source
+
 # Import MAF workflow module
 from . import maf_workflow
 
@@ -63,6 +66,177 @@ from . import maf_workflow
 from app.routers import sessions
 
 logger = structlog.get_logger(__name__)
+
+# Depth Configuration - Controls research comprehensiveness
+DEPTH_CONFIGS = {
+    "quick": {
+        "max_sources": 5,
+        "research_aspects": 2,  # Core concepts + current state only
+        "synthesis_iterations": 1,
+        "report_min_words": 500,
+        "report_max_words": 1500,
+        "timeout": 300,  # 5 minutes
+        "detail_level": "overview",
+        "description": "Fast overview with essential insights"
+    },
+    "standard": {
+        "max_sources": 10,
+        "research_aspects": 3,  # Add challenges
+        "synthesis_iterations": 2,
+        "report_min_words": 1500,
+        "report_max_words": 3000,
+        "timeout": 900,  # 15 minutes
+        "detail_level": "detailed",
+        "description": "Balanced analysis with moderate depth"
+    },
+    "comprehensive": {
+        "max_sources": 20,
+        "research_aspects": 5,  # All 5 aspects
+        "synthesis_iterations": 3,
+        "report_min_words": 3000,
+        "report_max_words": 6000,
+        "timeout": 2400,  # 40 minutes
+        "detail_level": "comprehensive",
+        "description": "Deep analysis with extensive research"
+    },
+    "exhaustive": {
+        "max_sources": 50,
+        "research_aspects": 5,
+        "synthesis_iterations": 5,  # Multiple refinement passes
+        "report_min_words": 6000,
+        "report_max_words": 15000,
+        "timeout": 7200,  # 2 hours
+        "detail_level": "exhaustive",
+        "description": "Scholarly depth with comprehensive coverage",
+        "enable_fact_checking": True,
+        "enable_multi_perspective": True
+    }
+}
+
+# Depth-Specific Prompts
+DEPTH_PROMPTS = {
+    "quick": {
+        "planner": """Create a focused research plan for: {topic}
+        
+Prioritize breadth over depth. Identify 2-3 key aspects to cover.
+Target: Quick overview with essential insights.
+Keep the plan concise and actionable.""",
+        
+        "researcher": """Provide a concise overview focusing on key facts and main points.
+Be direct and to-the-point. Avoid excessive detail.
+Target length: Brief summaries.""",
+        
+        "writer": """Write a clear, concise research report (500-1500 words).
+
+Structure:
+- Executive Summary (2-3 paragraphs)
+- Key Findings (3-5 bullet points)
+- Conclusion (1 paragraph)
+
+Focus on essential insights. Be direct and actionable."""
+    },
+    
+    "standard": {
+        "planner": """Create a balanced research plan for: {topic}
+        
+Cover major aspects with moderate depth. Identify 3-4 key dimensions.
+Target: Well-rounded analysis with supporting details.
+Balance breadth and depth appropriately.""",
+        
+        "researcher": """Provide detailed analysis with supporting evidence and examples.
+Include context and explanations. Back claims with data.
+Target length: Substantial paragraphs with depth.""",
+        
+        "writer": """Write a comprehensive research report (1500-3000 words).
+
+Structure:
+- Executive Summary
+- Introduction & Background
+- Main Analysis (3-4 sections)
+- Key Insights & Implications
+- Conclusion
+- References
+
+Provide balanced analysis with evidence and examples."""
+    },
+    
+    "comprehensive": {
+        "planner": """Create a thorough research plan for: {topic}
+        
+Examine all major dimensions comprehensively. Identify 5+ key aspects.
+Include historical context, current state, challenges, opportunities, and future outlook.
+Target: In-depth exploration with critical analysis.""",
+        
+        "researcher": """Conduct deep investigation with extensive evidence, multiple perspectives, and critical analysis.
+Explore nuances, interconnections, and implications.
+Provide detailed context, examples, and expert insights.
+Target length: Extensive sections with scholarly depth.""",
+        
+        "writer": """Write an in-depth research report (3000-6000 words).
+
+Structure:
+- Executive Summary
+- Introduction & Context
+- Methodology & Approach
+- Detailed Analysis (5-7 sections)
+- Critical Evaluation
+- Implications & Recommendations
+- Conclusion
+- Comprehensive References
+- Appendices (if needed)
+
+Provide thorough analysis with extensive evidence, critical thinking, and actionable insights."""
+    },
+    
+    "exhaustive": {
+        "planner": """Create an exhaustive research plan for: {topic}
+        
+Leave no stone unturned. Examine all aspects, edge cases, historical evolution, and future implications.
+Identify 7+ dimensions including technical, business, social, ethical, and practical considerations.
+Plan for multi-perspective analysis and deep investigation.
+Target: Scholarly comprehensive treatment.""",
+        
+        "researcher": """Conduct comprehensive investigation with exhaustive detail.
+
+Requirements:
+- Explore topic from multiple angles (historical, current, future)
+- Include expert opinions, case studies, and empirical evidence
+- Analyze interconnections and system-level implications
+- Consider edge cases and alternative perspectives
+- Provide extensive context and background
+- Challenge assumptions and explore controversies
+
+Target length: Extensive scholarly sections (1000+ words each).""",
+        
+        "writer": """Write a scholarly research report (6000-15000 words).
+
+Structure:
+- Abstract (250 words)
+- Executive Summary (500 words)
+- Introduction & Background (1000 words)
+- Literature Review & Context
+- Methodology
+- Comprehensive Analysis (8-12 detailed sections)
+- Multi-Perspective Evaluation
+- Critical Discussion
+- Future Directions & Research Gaps
+- Limitations & Constraints
+- Practical Recommendations
+- Conclusion
+- Extensive References (30+ sources)
+- Detailed Appendices
+- Glossary of Terms
+
+Requirements:
+- Provide exhaustive coverage with scholarly rigor
+- Include extensive evidence from diverse sources
+- Analyze from multiple perspectives
+- Discuss controversies and competing viewpoints
+- Provide actionable, well-justified recommendations
+- Meet minimum 6000 word count
+- Maintain academic quality throughout"""
+    }
+}
 
 # Global state
 workflow_engine: Optional[WorkflowEngine] = None
@@ -279,10 +453,36 @@ class TavilySearchAgent(BaseAgent):
                 # Use the message content as the task
                 task = message_content
                 
-                # Build search query - ensure it's not empty
-                search_query = task.strip()
+                # Build search query - extract concise query from potentially long instructions
+                # Tavily has a 400 character limit, so we need to be smart about this
+                if len(task) > 350:
+                    # Use AI to extract the core search query from verbose instructions
+                    query_extraction_response = await asyncio.to_thread(
+                        self.azure_client.chat.completions.create,
+                        model=self.model,
+                        messages=[
+                            {"role": "system", "content": "Extract a concise search query (max 300 chars) from the user's research request. Return ONLY the search query, nothing else."},
+                            {"role": "user", "content": f"Extract search query from: {task[:800]}"}
+                        ],
+                        temperature=0.3,
+                        max_tokens=100
+                    )
+                    search_query = query_extraction_response.choices[0].message.content.strip()
+                    # Safety check - if still too long, truncate intelligently
+                    if len(search_query) > 350:
+                        # Try to find the actual topic after common phrases
+                        for phrase in ["related to:", "regarding:", "about:", "on:"]:
+                            if phrase in search_query.lower():
+                                search_query = search_query.split(phrase, 1)[1].strip()
+                                break
+                        search_query = search_query[:350]
+                else:
+                    search_query = task.strip()
+                
                 if not search_query:
                     raise ValueError("Empty search query")
+                
+                logger.info(f"🔍 Tavily search query ({len(search_query)} chars): {search_query[:100]}...")
                 
                 # Perform web search
                 search_results = await asyncio.to_thread(
@@ -451,11 +651,11 @@ async def setup_research_agents(agent_registry: AgentRegistry, settings: Setting
     try:
         reviewer = AIResearchAgent(
             agent_id="reviewer",
-            name="Quality Reviewer",
-            description="AI agent that reviews research quality",
+            name="Report Editor",
+            description="AI agent that enhances and refines research reports",
             azure_client=azure_client,
             model=azure_deployment,
-            system_prompt="You are an expert research reviewer. Provide thorough quality feedback."
+            system_prompt="You are an expert research editor. Your job is to take research content and enhance it - improve clarity, fix formatting, ensure logical flow, add structure, but PRESERVE all the research findings and content. Return the IMPROVED REPORT, not feedback on it."
         )
         await agent_registry.register_agent("reviewer", reviewer)
         logger.info("Registered agent", agent_id="reviewer")
@@ -466,10 +666,10 @@ async def setup_research_agents(agent_registry: AgentRegistry, settings: Setting
         summarizer = AIResearchAgent(
             agent_id="summarizer",
             name="Executive Summarizer",
-            description="AI agent that creates executive summaries",
+            description="AI agent that extracts key insights and creates executive summary",
             azure_client=azure_client,
             model=azure_deployment,
-            system_prompt="You are an expert at creating concise executive summaries."
+            system_prompt="You are an expert at extracting key insights from research reports and creating compelling executive summaries. Return a concise 2-3 paragraph executive summary of the KEY FINDINGS, not meta-commentary about the report quality."
         )
         await agent_registry.register_agent("summarizer", summarizer)
         logger.info("Registered agent", agent_id="summarizer")
@@ -499,6 +699,19 @@ async def execute_research_programmatically(
     results = {}
     
     try:
+        # Get depth configuration
+        depth_config = DEPTH_CONFIGS.get(depth, DEPTH_CONFIGS["comprehensive"])
+        logger.info(f"🎯 Research depth: {depth}", config=depth_config)
+        
+        # Override max_sources with depth-specific value
+        max_sources = depth_config["max_sources"]
+        num_aspects = depth_config["research_aspects"]
+        
+        # Get depth-specific prompts
+        planner_prompt_template = DEPTH_PROMPTS[depth]["planner"]
+        researcher_instructions = DEPTH_PROMPTS[depth]["researcher"]
+        writer_instructions = DEPTH_PROMPTS[depth]["writer"]
+        
         # Import patterns from framework
         from framework.patterns import SequentialPattern, ConcurrentPattern
         
@@ -508,7 +721,7 @@ async def execute_research_programmatically(
         
         # Update progress: Phase 1 starting
         if execution_id in active_executions:
-            active_executions[execution_id]["current_task"] = "Phase 1: Research Planning"
+            active_executions[execution_id]["current_task"] = f"Phase 1: Research Planning ({depth} mode)"
             active_executions[execution_id]["progress"] = 10.0
             active_executions[execution_id]["completed_tasks"] = []
         
@@ -516,12 +729,18 @@ async def execute_research_programmatically(
         planning_pattern = SequentialPattern(
             agents=["planner"],
             name="research_planning",
-            description="Create comprehensive research plan",
+            description=f"Create {depth_config['detail_level']} research plan",
             config={"preserve_context": True}
         )
         
+        # Use depth-specific planning prompt
+        planner_prompt = planner_prompt_template.format(topic=topic)
+        planner_prompt += f"\n\nTarget: {depth_config['description']}"
+        planner_prompt += f"\nMax sources: {max_sources}"
+        planner_prompt += f"\nReport length: {depth_config['report_min_words']}-{depth_config['report_max_words']} words"
+        
         planning_context = await orchestrator_instance.execute(
-            task=f"Create a comprehensive research plan for the topic: {topic}. Break down into key subtopics, identify research questions, and suggest investigation approaches. Context: depth={depth}, max_sources={max_sources}",
+            task=planner_prompt,
             pattern=planning_pattern
         )
         
@@ -557,59 +776,194 @@ async def execute_research_programmatically(
             active_executions[execution_id]["progress"] = 20.0
             active_executions[execution_id]["completed_tasks"] = ["Phase 1: Research Planning"]
         
-        # Phase 2: Concurrent Investigation using ConcurrentPattern
-        logger.info("Code-based execution: Phase 2 - Concurrent Investigation with ConcurrentPattern")
-        logger.info("concurrent_phase_start", phase=2, task="investigation", agents=5)
+        # Phase 2: Multi-Query Research Execution (Deep Research Pattern)
+        logger.info("Code-based execution: Phase 2 - Multi-Query Deep Research")
+        logger.info("deep_research_start", phase=2, depth=depth, max_sources=max_sources)
         
-        # To truly showcase ConcurrentPattern, we'll execute all 5 research tasks in parallel
-        # We'll use asyncio.gather to run multiple concurrent executions simultaneously
-        # Each execution uses ConcurrentBuilder with 2 researcher agents for redundancy/quality
+        # Initialize Tavily search service
+        tavily_api_key = os.getenv("TAVILY_API_KEY")
+        if not tavily_api_key:
+            raise ValueError("TAVILY_API_KEY environment variable not set")
         
-        research_aspects = [
-            ("core_concepts", f"Research the core concepts and fundamental definitions related to: {topic}. Focus on authoritative sources and foundational understanding."),
-            ("current_state", f"Investigate the current state, recent developments, and latest trends regarding: {topic}. Focus on recent publications from the last 2-3 years."),
-            ("applications", f"Research practical applications, use cases, and real-world implementations of: {topic}. Include examples and case studies."),
-            ("challenges", f"Investigate the challenges, limitations, criticisms, and potential risks associated with: {topic}. Include counterarguments."),
-            ("future_trends", f"Research future trends, predictions, and emerging directions for: {topic}. Focus on expert opinions and forecasts.")
+        tavily_service = TavilySearchService(api_key=tavily_api_key)
+        
+        # Calculate queries per aspect based on depth
+        # Total sources = queries_per_aspect * results_per_query * num_aspects
+        # Example: exhaustive (50 sources) = 5 queries * 2 results * 5 aspects = 50 sources
+        queries_per_aspect_map = {
+            "quick": 1,      # 1 query * 5 results * 2 aspects = 10 sources
+            "standard": 2,   # 2 queries * 3 results * 3 aspects = 18 sources  
+            "comprehensive": 2,  # 2 queries * 5 results * 5 aspects = 50 sources
+            "exhaustive": 2  # 2 queries * 5 results * 5 aspects = 50 sources
+        }
+        
+        results_per_query_map = {
+            "quick": 5,
+            "standard": 3,
+            "comprehensive": 5,
+            "exhaustive": 5
+        }
+        
+        queries_per_aspect = queries_per_aspect_map.get(depth, 2)
+        results_per_query = results_per_query_map.get(depth, 5)
+        
+        # Define research aspects based on depth
+        all_research_aspects = [
+            ("core_concepts", "Core concepts and fundamental definitions", "Research the core concepts, fundamental definitions, and basic principles. Focus on authoritative sources."),
+            ("current_state", "Current state and recent developments", "Investigate the current state, recent developments, and latest trends. Focus on publications from the last 2-3 years."),
+            ("applications", "Practical applications and use cases", "Research practical applications, use cases, and real-world implementations. Include examples and case studies."),
+            ("challenges", "Challenges and limitations", "Investigate the challenges, limitations, criticisms, and potential risks. Include counterarguments."),
+            ("future_trends", "Future trends and predictions", "Research future trends, predictions, and emerging directions. Focus on expert opinions and forecasts.")
         ]
         
-        # Execute all research tasks concurrently using asyncio.gather
-        # This demonstrates true parallel execution with the framework
-        async def execute_research_task(key: str, task_prompt: str):
-            """Execute a single research task with a single agent."""
-            logger.info("research_task_start", task=key, execution="sequential")
+        # Select aspects based on depth
+        research_aspects = all_research_aspects[:num_aspects]
+        logger.info(f"🔬 Executing {num_aspects} research aspects with {queries_per_aspect} queries each")
+        
+        # Generate queries for each aspect using AI
+        async def generate_queries_for_aspect(aspect_key: str, aspect_title: str, aspect_description: str):
+            """Generate multiple search queries for a research aspect."""
+            logger.info(f"Generating queries for aspect: {aspect_key}")
             
-            # Since Microsoft Agent Framework doesn't allow duplicate agent instances,
-            # we'll use sequential execution with a single researcher agent per task
-            # The concurrency comes from running multiple sequential executions in parallel
-            sequential_result = await orchestrator_instance.execute_sequential(
-                task=task_prompt,
-                agent_ids=["researcher"],
-                tools=[]
+            query_generation_prompt = f"""Generate {queries_per_aspect} specific, focused search queries to research the following aspect of "{topic}":
+
+Aspect: {aspect_title}
+Description: {aspect_description}
+
+Requirements:
+- Each query should be specific and searchable (under 300 characters)
+- Queries should cover different angles of this aspect
+- Make queries focused enough to get quality results
+- Return ONLY a JSON array of query strings, nothing else
+
+Example format:
+["query 1", "query 2"]
+"""
+            
+            # Get Azure client
+            azure_client = AzureOpenAI(
+                api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+                azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
             )
             
-            if sequential_result and "results" in sequential_result:
-                response_content = sequential_result["results"][0].get("content", "") if sequential_result["results"] else ""
-                logger.info("research_task_completed", task=key, result_length=len(str(response_content)))
-                return (key, response_content)
-            else:
-                logger.error("research_task_failed", task=key, error="No response")
-                return (key, f"Error: No response received")
+            response = await asyncio.to_thread(
+                azure_client.chat.completions.create,
+                model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o"),
+                messages=[
+                    {"role": "system", "content": "You are a research query generator. Return only valid JSON."},
+                    {"role": "user", "content": query_generation_prompt}
+                ],
+                temperature=0.7,
+                max_tokens=500
+            )
+            
+            queries_text = response.choices[0].message.content.strip()
+            
+            # Parse JSON
+            try:
+                if "```json" in queries_text:
+                    queries_text = queries_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in queries_text:
+                    queries_text = queries_text.split("```")[1].split("```")[0].strip()
+                
+                queries = json.loads(queries_text)
+                if not isinstance(queries, list):
+                    queries = [topic + " " + aspect_title]
+            except:
+                queries = [topic + " " + aspect_title]
+            
+            return (aspect_key, aspect_title, queries[:queries_per_aspect])
         
-        # Execute all 5 research tasks in parallel
-        logger.info("Executing 5 research tasks concurrently with ConcurrentPattern")
-        research_results = await asyncio.gather(
-            *[execute_research_task(key, task_prompt) for key, task_prompt in research_aspects],
+        # Generate all queries
+        all_aspect_queries = await asyncio.gather(
+            *[generate_queries_for_aspect(key, title, desc) for key, title, desc in research_aspects],
             return_exceptions=True
         )
         
-        # Process results
-        for result in research_results:
-            if isinstance(result, Exception):
-                logger.error("Research task failed with exception", error=str(result))
-            else:
-                key, content = result
-                results[key] = content
+        # Execute searches and aggregate findings
+        aggregated_findings = {}
+        
+        for aspect_data in all_aspect_queries:
+            if isinstance(aspect_data, Exception):
+                logger.error("Query generation failed", error=str(aspect_data))
+                continue
+            
+            aspect_key, aspect_title, queries = aspect_data
+            aspect_findings = []
+            aspect_sources = []
+            
+            logger.info(f"🔍 Researching {aspect_key} with {len(queries)} queries")
+            
+            for query_idx, query in enumerate(queries):
+                try:
+                    # Perform Tavily search
+                    search_results = await tavily_service.search_and_format(
+                        query=query,
+                        research_goal=aspect_title,
+                        max_results=results_per_query
+                    )
+                    
+                    context = search_results["context"]
+                    sources = search_results["sources"]
+                    
+                    logger.info(f"📚 Search returned {len(sources)} sources for query: {query[:50]}...")
+                    
+                    # Create synthesis prompt
+                    synthesis_prompt = f"""Based on the following search results for "{query}":
+
+<CONTEXT>
+{context}
+</CONTEXT>
+
+Extract key learnings and insights. Be concise but information-dense.
+Include citations using [1], [2] format from the context above.
+Focus on factual information, metrics, and specific details."""
+                    
+                    # Get Azure client
+                    azure_client = AzureOpenAI(
+                        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+                        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+                        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+                    )
+                    
+                    # Synthesize findings
+                    synthesis_response = await asyncio.to_thread(
+                        azure_client.chat.completions.create,
+                        model=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME", "chat4o"),
+                        messages=[
+                            {"role": "system", "content": "You are an expert researcher who synthesizes information from sources with proper citations."},
+                            {"role": "user", "content": synthesis_prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=2000
+                    )
+                    
+                    findings = synthesis_response.choices[0].message.content
+                    aspect_findings.append(f"Query: {query}\n{findings}")
+                    aspect_sources.extend(sources)
+                    
+                    logger.info(f"✅ Query {query_idx+1}/{len(queries)} completed", sources_count=len(sources))
+                    
+                except Exception as e:
+                    logger.error(f"Search failed for query: {query}", error=str(e))
+                    aspect_findings.append(f"Query: {query}\nError: {str(e)}")
+            
+            # Aggregate findings for this aspect
+            aggregated_findings[aspect_key] = {
+                "title": aspect_title,
+                "findings": "\n\n".join(aspect_findings),
+                "sources": aspect_sources,  # Store actual sources, not just count
+                "sources_count": len(aspect_sources)
+            }
+            
+            logger.info(f"✅ Aspect {aspect_key} completed", 
+                       total_sources=len(aspect_sources),
+                       aspect_sources_details=f"{len(aspect_sources)} sources collected")
+        
+        # Store aggregated findings in results
+        for key, data in aggregated_findings.items():
+            results[key] = data["findings"]
         
         # Update progress: Phase 2 complete
         if execution_id in active_executions:
@@ -617,35 +971,97 @@ async def execute_research_programmatically(
             active_executions[execution_id]["progress"] = 50.0
             active_executions[execution_id]["completed_tasks"] = [
                 "Phase 1: Research Planning",
-                "Phase 2: Concurrent Investigation (5 parallel tasks)"
+                f"Phase 2: Deep Research ({sum(d['sources_count'] for d in aggregated_findings.values())} sources)"
             ]
         
         # Phase 3-6: Sequential Processing using SequentialPattern
         logger.info("Code-based execution: Phase 3-6 - Sequential Processing with SequentialPattern")
         logger.info("sequential_task_start", phase=3, task="synthesis_validation_finalization", agents=["writer", "reviewer", "summarizer"])
         
-        # Build comprehensive context for remaining phases
+        # Build comprehensive context for remaining phases with depth-specific instructions
+        research_sections = []
+        all_sources = []
+        
+        for key in aggregated_findings.keys():
+            if key in results:
+                section_title = aggregated_findings[key]["title"]
+                sources_count = aggregated_findings[key]["sources_count"]
+                research_sections.append(f"{section_title} ({sources_count} sources):\n{results[key]}\n")
+                # Collect all sources
+                aspect_sources_list = aggregated_findings[key].get("sources", [])
+                logger.info(f"📋 Collecting sources for {key}: {len(aspect_sources_list)} sources")
+                all_sources.extend(aspect_sources_list)
+        
+        logger.info(f"📚 Total sources collected from all aspects: {len(all_sources)}")
+        
+        # Deduplicate sources by URL
+        unique_sources = []
+        seen_urls = set()
+        for source in all_sources:
+            source_url = source.url if hasattr(source, 'url') else source.get('url', '')
+            if source_url and source_url not in seen_urls:
+                unique_sources.append(source)
+                seen_urls.add(source_url)
+        
+        logger.info(f"🔗 After deduplication: {len(unique_sources)} unique sources")
+        
+        # Format sources list
+        sources_list = "\n".join([
+            f"[{idx+1}] {source.title if hasattr(source, 'title') else source.get('title', 'Untitled')}\n    {source.url if hasattr(source, 'url') else source.get('url', '')}"
+            for idx, source in enumerate(unique_sources)
+        ])
+        
+        logger.info(f"📝 Formatted {len(unique_sources)} sources for context")
+        logger.info(f"📄 Sources list preview (first 500 chars): {sources_list[:500]}...")
+        
         comprehensive_context = f"""Research Topic: {topic}
+
+Research Depth: {depth} ({depth_config['description']})
+Target Length: {depth_config['report_min_words']}-{depth_config['report_max_words']} words
 
 Research Plan:
 {research_plan}
 
-Core Concepts:
-{results.get('core_concepts', '')}
+Research Findings:
+{"".join(research_sections)}
 
-Current State:
-{results.get('current_state', '')}
+Sources ({len(unique_sources)} total):
+{sources_list}
 
-Applications:
-{results.get('applications', '')}
+INSTRUCTIONS FOR WRITER AGENT:
+{writer_instructions}
 
-Challenges:
-{results.get('challenges', '')}
+YOUR TASK: Write the ACTUAL RESEARCH REPORT about "{topic}" using the research findings above. 
+DO NOT write feedback or critique - write the actual research content that will be delivered to the user.
+Include sections, findings, analysis, and conclusions based on the research above.
 
-Future Trends:
-{results.get('future_trends', '')}
+CRITICAL REQUIREMENT - SOURCES SECTION:
+You MUST include a complete "## Sources" or "## References" section at the END of your report.
+List ALL {len(unique_sources)} sources provided above using this exact format:
 
-Instructions: Process this research through synthesis, validation, finalization, and summarization phases."""
+## Sources
+
+[1] Source Title
+    URL
+
+[2] Source Title  
+    URL
+
+(etc. for all {len(unique_sources)} sources)
+
+DO NOT skip the sources section. It is MANDATORY.
+
+INSTRUCTIONS FOR EDITOR AGENT:
+Take the research report from the writer and enhance it - improve clarity, structure, and flow while preserving all content.
+Return the ENHANCED REPORT, not commentary about it.
+CRITICAL: The Sources/References section MUST be preserved in full. Do not remove or modify the sources.
+
+INSTRUCTIONS FOR SUMMARIZER AGENT:
+Extract and present the key findings from the research report in a concise executive summary.
+Return the SUMMARY OF FINDINGS, not an evaluation of report quality."""
+        
+        logger.info(f"📤 Sending context to agents with {len(unique_sources)} sources in Sources section")
+        logger.info(f"📊 Context length: {len(comprehensive_context)} characters")
         
         # Use SequentialPattern for the remaining workflow
         # Note: Microsoft Agent Framework doesn't allow duplicate agent instances
@@ -653,7 +1069,7 @@ Instructions: Process this research through synthesis, validation, finalization,
         final_phases_pattern = SequentialPattern(
             agents=["writer", "reviewer", "summarizer"],
             name="synthesis_validation_finalization",
-            description="Sequential synthesis, validation, and summarization",
+            description=f"Sequential synthesis ({depth} depth), validation, and summarization",
             config={"preserve_context": True, "fail_fast": False}
         )
         
@@ -710,11 +1126,23 @@ Instructions: Process this research through synthesis, validation, finalization,
             active_executions[execution_id]["progress"] = 100.0
             active_executions[execution_id]["completed_tasks"] = [
                 "Phase 1: Research Planning (SequentialPattern)",
-                "Phase 2: Concurrent Investigation (ConcurrentPattern)",
+                f"Phase 2: Multi-Query Deep Research ({len(unique_sources)} unique sources)",
                 "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)"
             ]
         
-        logger.info("Code-based execution completed successfully using framework patterns")
+        # Store sources in results for API response (convert Source objects to dicts)
+        results["sources"] = [
+            {
+                "title": source.title if hasattr(source, 'title') else source.get('title', 'Untitled'),
+                "url": source.url if hasattr(source, 'url') else source.get('url', ''),
+                "content": source.content if hasattr(source, 'content') else source.get('content', '')
+            }
+            for source in unique_sources
+        ]
+        results["sources_count"] = len(unique_sources)
+        
+        logger.info("Code-based execution completed successfully using framework patterns", 
+                   total_sources=len(unique_sources))
         return results
         
     except Exception as e:
@@ -1070,11 +1498,16 @@ async def start_research(request: ResearchRequest, req: Request, background_task
         if request.execution_mode == "maf-workflow":
             # MAF Workflow execution: Use graph-based workflow with executors
             logger.info(f"Starting MAF workflow-based research execution", execution_id=execution_id, topic=request.topic)
+            
+            # Get depth configuration
+            depth_config = DEPTH_CONFIGS.get(request.depth, DEPTH_CONFIGS["comprehensive"])
+            max_sources_for_depth = depth_config["max_sources"]
+            
             background_tasks.add_task(
                 execute_maf_workflow_research_task,
                 execution_id,
                 request.topic,
-                request.max_sources
+                max_sources_for_depth  # Use depth-specific max_sources
             )
         elif request.execution_mode == "code":
             # Code-based execution: Use programmatic approach with orchestrator
@@ -1093,12 +1526,20 @@ async def start_research(request: ResearchRequest, req: Request, background_task
             # Workflow-based execution: Use declarative YAML
             logger.info(f"Starting workflow-based research execution", execution_id=execution_id, topic=request.topic)
             
+            # Get depth configuration
+            depth_config = DEPTH_CONFIGS.get(request.depth, DEPTH_CONFIGS["comprehensive"])
+            logger.info(f"🎯 YAML Workflow depth: {request.depth}", config=depth_config)
+            
+            # Override max_sources with depth-specific value
+            max_sources_for_depth = depth_config["max_sources"]
+            
             # Prepare workflow variables
             variables = {
                 "research_topic": request.topic,
                 "research_depth": request.depth,
-                "max_sources": request.max_sources,
-                "include_citations": request.include_citations
+                "max_sources": max_sources_for_depth,  # Use depth-specific max_sources
+                "include_citations": request.include_citations,
+                "depth_config": depth_config  # Pass full config for agents to use
             }
             
             # Start workflow execution with our execution_id
@@ -1901,14 +2342,16 @@ async def execute_maf_workflow_research_task(
                 active_executions[execution_id]["current_task"] = f"Completed: {executor_id}"
                 active_executions[execution_id]["completed_tasks"].append(executor_id)
         
-        # Execute MAF workflow
+        # Execute MAF workflow with multi-query configuration
         results = await maf_workflow.execute_maf_workflow_research(
             topic=topic,
             execution_id=execution_id,
             azure_client=azure_client,
-            tavily_client=tavily_client,
+            tavily_api_key=tavily_api_key,  # Pass API key instead of client
             model=azure_deployment,
             max_sources=max_sources,
+            queries_per_area=2,  # Multi-query deep research
+            results_per_query=5,
             progress_callback=progress_callback
         )
         

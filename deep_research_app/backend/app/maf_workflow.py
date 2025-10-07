@@ -14,6 +14,7 @@ Key Differences from Task-Based Workflows:
 
 import asyncio
 import os
+import json
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,6 +35,9 @@ from agent_framework import (
     WorkflowFailedEvent,
     ExecutorCompletedEvent,
 )
+
+# Import TavilySearchService for multi-query deep research
+from .services.tavily_search_service import TavilySearchService, Source
 
 logger = structlog.get_logger(__name__)
 
@@ -77,7 +81,7 @@ class ResearchFindings:
     execution_id: str
     area: str
     findings: str
-    sources: List[str]
+    sources: List[Any]  # List of Source objects or dicts
     confidence: float  # 0.0 to 1.0
     timestamp: datetime = None
     
@@ -248,8 +252,8 @@ ESTIMATED DURATION:
 
 class ResearchExecutor(Executor):
     """
-    Executor that performs research on a specific area.
-    Uses Tavily for web search and Azure OpenAI for synthesis.
+    Executor that performs multi-query deep research on a specific area.
+    Uses TavilySearchService for web search with multiple queries per area.
     
     Input: ResearchPlan
     Output: ResearchFindings
@@ -258,19 +262,23 @@ class ResearchExecutor(Executor):
     def __init__(
         self,
         area_index: int,
-        tavily: TavilyClient,
+        tavily_api_key: str,
         azure_client: AzureOpenAI,
         model: str,
-        executor_id: str = None
+        executor_id: str = None,
+        queries_per_area: int = 2,
+        results_per_query: int = 5
     ):
         super().__init__(id=executor_id or f"researcher_{area_index}")
         self.area_index = area_index
-        self.tavily = tavily
+        self.tavily_service = TavilySearchService(api_key=tavily_api_key)
         self.azure_client = azure_client
         self.model = model
+        self.queries_per_area = queries_per_area
+        self.results_per_query = results_per_query
         self.system_prompt = """You are an expert researcher. 
-Analyze web search results and synthesize comprehensive findings.
-Be factual, cite sources, and provide well-structured insights."""
+Analyze web search results and synthesize comprehensive findings with proper citations.
+Be factual, cite sources using [1], [2] format, and provide well-structured insights."""
     
     @handler
     async def run(
@@ -278,7 +286,7 @@ Be factual, cite sources, and provide well-structured insights."""
         plan: ResearchPlan,
         ctx: WorkflowContext[ResearchFindings]
     ) -> None:
-        """Perform research on assigned area."""
+        """Perform multi-query deep research on assigned area."""
         
         # Check if we should research this area
         if self.area_index >= len(plan.research_areas):
@@ -290,68 +298,111 @@ Be factual, cite sources, and provide well-structured insights."""
             return
         
         area = plan.research_areas[self.area_index]
-        logger.info(f"[{self.id}] Researching area", area=area)
+        logger.info(f"[{self.id}] Researching area with multi-query approach", 
+                   area=area, queries=self.queries_per_area)
         
         try:
-            # Perform web search
-            search_query = f"{plan.topic} {area}"
-            search_results = await asyncio.to_thread(
-                self.tavily.search,
-                query=search_query,
-                max_results=5
-            )
-            
-            # Format search results
-            sources = []
-            sources_text = ""
-            for idx, result in enumerate(search_results.get('results', []), 1):
-                title = result.get('title', 'Unknown')
-                url = result.get('url', '')
-                content = result.get('content', '')
-                sources.append(f"{title} - {url}")
-                sources_text += f"\nSource {idx}: {title}\nURL: {url}\nContent: {content}\n"
-            
-            # Synthesize findings with AI
-            synthesis_prompt = f"""Based on the following web search results, provide comprehensive research findings about:
+            # Generate multiple queries for this research area
+            query_generation_prompt = f"""Generate {self.queries_per_area} specific, focused search queries to research the following aspect of "{plan.topic}":
 
-Topic: {plan.topic}
 Research Area: {area}
 
-Search Results:
-{sources_text}
+Requirements:
+- Each query should be specific and searchable (under 300 characters)
+- Queries should cover different angles of this research area
+- Make queries focused enough to get quality results
+- Return ONLY a JSON array of query strings, nothing else
 
-Provide a well-structured synthesis of the key findings, insights, and important information."""
+Example format:
+["query 1", "query 2"]
+"""
             
             response = await asyncio.to_thread(
                 self.azure_client.chat.completions.create,
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": synthesis_prompt}
+                    {"role": "system", "content": "You are a research query generator. Return only valid JSON."},
+                    {"role": "user", "content": query_generation_prompt}
                 ],
                 temperature=0.7,
-                max_tokens=2000
+                max_tokens=500
             )
             
-            findings_text = response.choices[0].message.content
+            queries_text = response.choices[0].message.content.strip()
             
-            # Create findings
-            findings = ResearchFindings(
+            # Parse queries
+            try:
+                queries = json.loads(queries_text)
+                if not isinstance(queries, list):
+                    queries = [f"{plan.topic} {area}"]
+            except:
+                queries = [f"{plan.topic} {area}"]
+            
+            # Execute each query and aggregate findings
+            area_findings = []
+            area_sources = []
+            
+            for query_idx, query in enumerate(queries[:self.queries_per_area]):
+                logger.info(f"[{self.id}] Executing query {query_idx+1}/{len(queries)}: {query[:50]}...")
+                
+                # Perform Tavily search using the service
+                search_results = await self.tavily_service.search_and_format(
+                    query=query,
+                    research_goal=area,
+                    max_results=self.results_per_query
+                )
+                
+                context = search_results["context"]
+                sources = search_results["sources"]
+                
+                # Synthesize findings with citations
+                synthesis_prompt = f"""Based on the following search results for "{query}":
+
+<CONTEXT>
+{context}
+</CONTEXT>
+
+Extract key learnings and insights. Be concise but information-dense.
+Include citations using [1], [2] format from the context above.
+Focus on factual information, metrics, and specific details."""
+                
+                synthesis_response = await asyncio.to_thread(
+                    self.azure_client.chat.completions.create,
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": synthesis_prompt}
+                    ],
+                    temperature=0.7,
+                    max_tokens=2000
+                )
+                
+                findings = synthesis_response.choices[0].message.content
+                area_findings.append(f"Query: {query}\n{findings}")
+                area_sources.extend(sources)
+                
+                logger.info(f"[{self.id}] Query {query_idx+1} completed", sources_count=len(sources))
+            
+            # Aggregate all findings for this area
+            aggregated_findings_text = "\n\n".join(area_findings)
+            
+            # Create findings object
+            findings_obj = ResearchFindings(
                 topic=plan.topic,
                 execution_id=plan.execution_id,
                 area=area,
-                findings=findings_text,
-                sources=sources,
+                findings=aggregated_findings_text,
+                sources=area_sources,  # Store Source objects
                 confidence=0.85  # Could be calculated based on result quality
             )
             
             logger.info(
                 f"[{self.id}] Research completed",
                 area=area,
-                sources_count=len(sources)
+                sources_count=len(area_sources)
             )
             
-            await ctx.send_message(findings)
+            await ctx.send_message(findings_obj)
             
         except Exception as e:
             logger.error(f"[{self.id}] Error during research", area=area, error=str(e))
@@ -389,7 +440,7 @@ Use clear sections, cite sources, and provide actionable insights."""
         findings_list: List[ResearchFindings],
         ctx: WorkflowContext[SynthesizedReport]
     ) -> None:
-        """Synthesize all findings into comprehensive report."""
+        """Synthesize all findings into comprehensive report with sources."""
         logger.info(f"[{self.id}] Synthesizing report", findings_count=len(findings_list))
         
         if not findings_list:
@@ -401,7 +452,7 @@ Use clear sections, cite sources, and provide actionable insights."""
             topic = findings_list[0].topic
             execution_id = findings_list[0].execution_id
             
-            # Compile all findings
+            # Compile all findings and collect sources
             compiled_findings = ""
             all_sources = []
             
@@ -409,16 +460,50 @@ Use clear sections, cite sources, and provide actionable insights."""
                 compiled_findings += f"\n\n## Research Area {idx}: {finding.area}\n"
                 compiled_findings += f"Confidence: {finding.confidence:.0%}\n\n"
                 compiled_findings += finding.findings
-                compiled_findings += f"\n\nSources:\n"
-                for source in finding.sources:
-                    compiled_findings += f"- {source}\n"
-                    all_sources.append(source)
+                # Collect sources (they're Source objects from TavilySearchService)
+                all_sources.extend(finding.sources)
             
-            # Create synthesis prompt
+            # Deduplicate sources by URL
+            unique_sources = []
+            seen_urls = set()
+            for source in all_sources:
+                source_url = source.url if hasattr(source, 'url') else str(source)
+                if source_url and source_url not in seen_urls:
+                    unique_sources.append(source)
+                    seen_urls.add(source_url)
+            
+            logger.info(f"[{self.id}] Collected {len(unique_sources)} unique sources from {len(all_sources)} total")
+            
+            # Format sources list
+            sources_list = "\n".join([
+                f"[{idx+1}] {source.title if hasattr(source, 'title') else 'Unknown'}\n    {source.url if hasattr(source, 'url') else str(source)}"
+                for idx, source in enumerate(unique_sources)
+            ])
+            
+            # Create synthesis prompt with explicit sources requirement
             synthesis_prompt = f"""Synthesize the following research findings into a comprehensive, well-structured report about: "{topic}"
 
 Research Findings:
 {compiled_findings}
+
+Sources ({len(unique_sources)} total):
+{sources_list}
+
+CRITICAL REQUIREMENT - SOURCES SECTION:
+You MUST include a complete "## Sources" or "## References" section at the END of your report.
+List ALL {len(unique_sources)} sources using this exact format:
+
+## Sources
+
+[1] Source Title
+    URL
+
+[2] Source Title
+    URL
+
+(etc. for all {len(unique_sources)} sources)
+
+DO NOT skip the sources section. It is MANDATORY.
 
 Create a report with the following structure:
 1. Introduction
@@ -426,8 +511,9 @@ Create a report with the following structure:
 3. Analysis and Insights
 4. Implications
 5. Conclusion
+6. **Sources** (MANDATORY - use the numbered list provided above)
 
-Make the report comprehensive, coherent, and cite sources where appropriate."""
+Make the report comprehensive, coherent, and cite sources using [1], [2] format in the text."""
             
             response = await asyncio.to_thread(
                 self.azure_client.chat.completions.create,
@@ -457,7 +543,8 @@ Make the report comprehensive, coherent, and cite sources where appropriate."""
             
             logger.info(
                 f"[{self.id}] Report synthesized",
-                quality_score=f"{quality_score:.0%}"
+                quality_score=f"{quality_score:.0%}",
+                sources_count=len(unique_sources)
             )
             
             await ctx.send_message(report)
@@ -477,7 +564,7 @@ Make the report comprehensive, coherent, and cite sources where appropriate."""
 
 class ReviewerExecutor(Executor):
     """
-    Executor that reviews and validates the synthesized report.
+    Executor that enhances and refines the synthesized report.
     
     Input: SynthesizedReport
     Output: ReviewedReport
@@ -487,9 +574,10 @@ class ReviewerExecutor(Executor):
         super().__init__(id=executor_id)
         self.azure_client = azure_client
         self.model = model
-        self.system_prompt = """You are an expert quality reviewer and editor.
-Review reports for accuracy, coherence, completeness, and clarity.
-Provide constructive feedback and make improvements where needed."""
+        self.system_prompt = """You are an expert research editor.
+Your job is to take research content and enhance it - improve clarity, fix formatting, ensure logical flow, add structure.
+PRESERVE all the research findings and content, especially the Sources section.
+Return the IMPROVED REPORT, not feedback on it."""
     
     @handler
     async def run(
@@ -497,32 +585,20 @@ Provide constructive feedback and make improvements where needed."""
         report: SynthesizedReport,
         ctx: WorkflowContext[ReviewedReport]
     ) -> None:
-        """Review and validate the report."""
-        logger.info(f"[{self.id}] Reviewing report", quality=f"{report.quality_score:.0%}")
+        """Enhance and refine the report."""
+        logger.info(f"[{self.id}] Enhancing report", quality=f"{report.quality_score:.0%}")
         
         try:
-            review_prompt = f"""Review the following research report for quality, accuracy, and completeness:
+            review_prompt = f"""Take the research report and enhance it - improve clarity, structure, and flow while preserving all content.
 
 Topic: {report.topic}
-Current Quality Score: {report.quality_score:.0%}
 
 Report:
 {report.report}
 
-Provide:
-1. Quality assessment (strengths and weaknesses)
-2. Suggestions for improvement
-3. A revised version that addresses any issues
+CRITICAL: The Sources/References section MUST be preserved in full. Do not remove or modify the sources.
 
-Format your response as:
-ASSESSMENT:
-[Your assessment]
-
-SUGGESTIONS:
-[Your suggestions]
-
-REVISED REPORT:
-[The improved report]"""
+Return the ENHANCED REPORT with improved clarity and structure, not commentary about it."""
             
             response = await asyncio.to_thread(
                 self.azure_client.chat.completions.create,
@@ -531,23 +607,17 @@ REVISED REPORT:
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": review_prompt}
                 ],
-                temperature=0.5,  # Lower temperature for review
+                temperature=0.5,  # Lower temperature for enhancement
                 max_tokens=4000
             )
             
             result_text = response.choices[0].message.content
             
-            # Try to extract revised report
-            if "REVISED REPORT:" in result_text:
-                parts = result_text.split("REVISED REPORT:")
-                validation_notes = parts[0].strip()
-                final_report = parts[1].strip()
-            else:
-                # If parsing fails, use original report
-                validation_notes = result_text
-                final_report = report.report
+            # Use the enhanced report directly (no parsing needed)
+            final_report = result_text.strip()
+            validation_notes = "Report enhanced for clarity and structure"
             
-            # Improve quality score slightly after review
+            # Improve quality score slightly after enhancement
             new_quality_score = min(report.quality_score * 1.05, 1.0)
             
             reviewed = ReviewedReport(
@@ -559,7 +629,7 @@ REVISED REPORT:
             )
             
             logger.info(
-                f"[{self.id}] Review completed",
+                f"[{self.id}] Enhancement completed",
                 quality=f"{new_quality_score:.0%}"
             )
             
@@ -590,8 +660,8 @@ class SummarizerExecutor(Executor):
         super().__init__(id=executor_id)
         self.azure_client = azure_client
         self.model = model
-        self.system_prompt = """You are an expert at creating concise executive summaries.
-Extract key insights and present them in a clear, actionable format for executives."""
+        self.system_prompt = """You are an expert at extracting key insights from research reports and creating compelling executive summaries.
+Focus on the KEY FINDINGS, not meta-commentary about the report quality."""
     
     @handler
     async def run(
@@ -599,22 +669,25 @@ Extract key insights and present them in a clear, actionable format for executiv
         reviewed: ReviewedReport,
         ctx: WorkflowContext[FinalOutput]
     ) -> None:
-        """Create executive summary."""
+        """Create executive summary of key findings."""
         logger.info(f"[{self.id}] Creating executive summary")
         
         try:
-            summary_prompt = f"""Create a concise executive summary of the following research report:
+            summary_prompt = f"""Extract and present the key findings from the research report in a concise executive summary.
 
 Topic: {reviewed.topic}
 
 Full Report:
 {reviewed.final_report}
 
+Return the SUMMARY OF FINDINGS, not an evaluation of report quality.
+
 Create an executive summary that:
-1. Highlights the most important findings (3-5 key points)
+1. Highlights the most important research findings (3-5 key points)
 2. Provides actionable insights
 3. Is no more than 300 words
-4. Uses clear, accessible language"""
+4. Uses clear, accessible language
+5. Focuses on WHAT was found, not how good the report is"""
             
             response = await asyncio.to_thread(
                 self.azure_client.chat.completions.create,
@@ -670,36 +743,48 @@ Create an executive summary that:
 
 async def create_research_workflow(
     azure_client: AzureOpenAI,
-    tavily_client: TavilyClient,
+    tavily_api_key: str,
     model: str = "chat4o",
-    max_research_areas: int = 3
+    max_research_areas: int = 3,
+    queries_per_area: int = 2,
+    results_per_query: int = 5
 ):
     """
-    Create a MAF workflow for deep research.
+    Create a MAF workflow for deep research with multi-query approach.
     
     Workflow Structure:
     1. Planner creates research plan
-    2. Fan-out to multiple researchers (parallel)
+    2. Fan-out to multiple researchers (parallel, each using multi-query)
     3. Fan-in to synthesizer
-    4. Sequential review and summarization
+    4. Sequential enhancement and summarization
     
     Args:
         azure_client: Azure OpenAI client
-        tavily_client: Tavily search client
+        tavily_api_key: Tavily API key for search service
         model: Azure OpenAI model deployment name
         max_research_areas: Maximum number of parallel research tasks
+        queries_per_area: Number of queries per research area (for deep research)
+        results_per_query: Number of results per query
         
     Returns:
         Configured workflow ready for execution
     """
-    logger.info("Building MAF research workflow")
+    logger.info("Building MAF research workflow with multi-query deep research")
     
     # Create executors
     planner = ResearchPlannerExecutor(azure_client, model, "planner")
     
-    # Create multiple researchers for parallel execution
+    # Create multiple researchers for parallel execution with multi-query
     researchers = [
-        ResearchExecutor(i, tavily_client, azure_client, model, f"researcher_{i}")
+        ResearchExecutor(
+            i, 
+            tavily_api_key, 
+            azure_client, 
+            model, 
+            f"researcher_{i}",
+            queries_per_area=queries_per_area,
+            results_per_query=results_per_query
+        )
         for i in range(max_research_areas)
     ]
     
@@ -738,39 +823,47 @@ async def execute_maf_workflow_research(
     topic: str,
     execution_id: str,
     azure_client: AzureOpenAI,
-    tavily_client: TavilyClient,
+    tavily_api_key: str,
     model: str = "chat4o",
     max_sources: int = 5,
+    queries_per_area: int = 2,
+    results_per_query: int = 5,
     progress_callback: Optional[callable] = None
 ) -> Dict[str, Any]:
     """
-    Execute research using MAF workflow.
+    Execute research using MAF workflow with multi-query deep research.
     
     Args:
         topic: Research topic
         execution_id: Unique execution ID
         azure_client: Azure OpenAI client
-        tavily_client: Tavily search client
+        tavily_api_key: Tavily API key
         model: Azure OpenAI model deployment name
-        max_sources: Maximum sources per research area
+        max_sources: Maximum sources per research area (calculated from queries * results)
+        queries_per_area: Number of queries per research area
+        results_per_query: Number of results per query
         progress_callback: Optional async callback for progress updates
         
     Returns:
         Dictionary with research results
     """
     logger.info(
-        "Starting MAF workflow research",
+        "Starting MAF workflow research with multi-query",
         topic=topic,
-        execution_id=execution_id
+        execution_id=execution_id,
+        queries_per_area=queries_per_area,
+        results_per_query=results_per_query
     )
     
     try:
-        # Create workflow
+        # Create workflow with multi-query configuration
         workflow = await create_research_workflow(
             azure_client=azure_client,
-            tavily_client=tavily_client,
+            tavily_api_key=tavily_api_key,
             model=model,
-            max_research_areas=3  # 3 parallel researchers
+            max_research_areas=3,  # 3 parallel researchers
+            queries_per_area=queries_per_area,
+            results_per_query=results_per_query
         )
         
         # Create initial request

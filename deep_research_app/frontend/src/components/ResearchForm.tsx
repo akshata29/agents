@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiClient } from '../api';
 import { ResearchRequest } from '../types';
-import { Search, Loader2, Lightbulb, Brain, TrendingUp, Shield, Rocket, BookOpen, Globe } from 'lucide-react';
+import { Search, Loader2, Lightbulb, Brain, TrendingUp, Shield, Rocket, BookOpen, Globe, Info } from 'lucide-react';
 
 interface QuickTask {
   title: string;
@@ -12,6 +12,34 @@ interface QuickTask {
   executionMode: 'workflow' | 'code' | 'maf-workflow';
   depth: 'quick' | 'standard' | 'comprehensive' | 'exhaustive';
 }
+
+// Depth configuration mapping (matches backend DEPTH_CONFIGS)
+const DEPTH_INFO = {
+  quick: {
+    sources: 5,
+    duration: '5-10 min',
+    words: '500-1,500',
+    description: 'Fast overview with essential information'
+  },
+  standard: {
+    sources: 10,
+    duration: '15-20 min',
+    words: '1,500-3,000',
+    description: 'Balanced analysis with moderate depth'
+  },
+  comprehensive: {
+    sources: 20,
+    duration: '30-40 min',
+    words: '3,000-6,000',
+    description: 'Deep analysis with extensive coverage'
+  },
+  exhaustive: {
+    sources: 50,
+    duration: '1-2 hours',
+    words: '6,000-15,000',
+    description: 'Comprehensive scholarly research'
+  }
+};
 
 interface ResearchFormProps {
   onResearchStart: (executionId: string) => void;
@@ -93,6 +121,9 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
     include_citations: true,
     execution_mode: 'workflow',
   });
+
+  // Get current depth info for display
+  const currentDepthInfo = DEPTH_INFO[formData.depth];
 
   const startResearchMutation = useMutation({
     mutationFn: apiClient.startResearch,
@@ -215,11 +246,30 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
               }
               className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
-              <option value="quick">Quick - Fast overview (5-10 min)</option>
-              <option value="standard">Standard - Balanced analysis (15-20 min)</option>
-              <option value="comprehensive">Comprehensive - Deep analysis (30-40 min)</option>
-              <option value="exhaustive">Exhaustive - Complete analysis (1+ hour)</option>
+              <option value="quick">⚡ Quick - Fast overview (5-10 min)</option>
+              <option value="standard">📊 Standard - Balanced analysis (15-20 min)</option>
+              <option value="comprehensive">🔬 Comprehensive - Deep analysis (30-40 min)</option>
+              <option value="exhaustive">🚀 Exhaustive - Complete analysis (1-2 hours)</option>
             </select>
+            
+            {/* Depth Info Display */}
+            <div className="mt-3 p-3 bg-slate-600/50 rounded-lg border border-slate-500">
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <span className="text-slate-400">Sources:</span>
+                  <span className="ml-1 text-white font-semibold">{currentDepthInfo.sources}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Duration:</span>
+                  <span className="ml-1 text-white font-semibold">{currentDepthInfo.duration}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Words:</span>
+                  <span className="ml-1 text-white font-semibold">{currentDepthInfo.words}</span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-300 mt-2">{currentDepthInfo.description}</p>
+            </div>
           </div>
 
           {/* Execution Mode */}
@@ -246,23 +296,28 @@ export default function ResearchForm({ onResearchStart, sessionId }: ResearchFor
 
           {/* Options Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Max Sources */}
+            {/* Max Sources - Now readonly, controlled by depth */}
             <div>
-              <label htmlFor="max_sources" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="max_sources" className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
                 Maximum Sources
+                <span className="text-xs text-slate-400 font-normal">(Auto-configured)</span>
               </label>
-              <input
-                id="max_sources"
-                type="number"
-                min="3"
-                max="50"
-                value={formData.max_sources}
-                onChange={(e) =>
-                  setFormData({ ...formData, max_sources: parseInt(e.target.value) })
-                }
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-              <p className="text-xs text-slate-500 mt-1">Number of sources to analyze (3-50)</p>
+              <div className="relative">
+                <input
+                  id="max_sources"
+                  type="number"
+                  value={currentDepthInfo.sources}
+                  readOnly
+                  className="w-full px-4 py-3 bg-slate-600 border border-slate-500 rounded-lg text-slate-300 cursor-not-allowed"
+                  title="This value is automatically set based on your selected research depth"
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <Info className="w-4 h-4 text-slate-400" />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Automatically set by research depth selection
+              </p>
             </div>
 
             {/* Include Citations */}

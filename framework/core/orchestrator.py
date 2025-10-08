@@ -380,26 +380,39 @@ class MagenticOrchestrator:
         # ChatMessage requires 'contents' (list of TextContent), not 'content'
         messages = [ChatMessage(role=Role.USER, contents=[TextContent(text=task)])]
         
-        # Execute and capture aggregated messages from ConcurrentBuilder
-        # ConcurrentBuilder's aggregator yields a list[ChatMessage] with all agent responses
+        # With upgraded MAF package, the aggregator now properly checks agent_run_response.messages
+        # so we can rely on the standard aggregation flow
         aggregated_messages = None
+        agent_responses_debug = []  # Track individual agent responses for debugging
+        
         workflow_run = await workflow.run(messages)
         for event in workflow_run:
+            # Log ALL events for debugging
+            logger.info(f"🔍 Workflow event: {type(event).__name__}, source={getattr(event, 'source_executor_id', 'N/A')}")
+            
             if isinstance(event, WorkflowOutputEvent):
-                # The aggregator executor (id="aggregator") returns list[ChatMessage]
-                # Format: [user_prompt?, assistant1, assistant2, assistant3, ...]
-                # Each assistant message has author_name for agent identification
+                # Log individual agent outputs before aggregation
+                if event.source_executor_id != "aggregator":
+                    logger.info(f"🤖 Agent output: {event.source_executor_id}, data_type={type(event.data)}, has_data={event.data is not None}")
+                    if event.data:
+                        logger.info(f"   Data content: {event.data if len(str(event.data)) < 200 else str(event.data)[:200] + '...'}")
+                        agent_responses_debug.append({
+                            "agent": event.source_executor_id,
+                            "data": event.data
+                        })
+                
+                # The aggregator returns the final aggregated conversation
                 if event.source_executor_id == "aggregator" and event.data:
                     aggregated_messages = event.data
-                    logger.info(f"Received aggregated messages: {len(event.data)} messages")
-                    for msg in event.data:
-                        logger.info(f"  Message: role={msg.role.value}, author={getattr(msg, 'author_name', 'unknown')}, len={len(getattr(msg, 'text', ''))}")
+                    logger.info(f"✅ Received aggregated messages from MAF: {len(event.data)} messages")
+        
+        # Log summary of what we captured
+        logger.info(f"📊 Workflow completed: {len(agent_responses_debug)} agent responses, aggregated={'YES' if aggregated_messages else 'NO'}")
         
         # Extract individual agent outputs from aggregated conversation
         results = []
         
         # Build dynamic agent name mapping from display names to agent IDs
-        # This works with ANY agents, not just hardcoded ones
         agent_name_mapping = {}
         for i, agent_id in enumerate(agents):
             if i < len(agent_display_names):
@@ -408,7 +421,7 @@ class MagenticOrchestrator:
                 logger.debug(f"Mapped '{display_name}' -> '{agent_id}'")
         
         if aggregated_messages:
-            logger.info(f"Extracting individual agent outputs from {len(aggregated_messages)} messages")
+            logger.info(f"Extracting individual agent outputs from {len(aggregated_messages)} aggregated messages")
             
             for message in aggregated_messages:
                 # Skip user messages

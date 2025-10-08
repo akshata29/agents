@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.infra.settings import get_settings
 from app.routers import transcription, sentiment, recommendations
-from app.api import summary, entity_pii, orchestration
+from app.api import summary, entity_pii, orchestration, history
 
 # Configure structured logging
 structlog.configure(
@@ -147,6 +147,7 @@ app.include_router(recommendations.router)
 app.include_router(summary.router)
 app.include_router(entity_pii.router)
 app.include_router(orchestration.router)
+app.include_router(history.router)
 
 
 # ============================================================================

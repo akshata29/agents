@@ -332,8 +332,8 @@ class TranscriptionWebSocketManager:
             # Send updates to respective WebSocket connections
             # Import WebSocket managers
             from app.routers.sentiment import sentiment_ws_manager
-            from app.api.entity_pii import entity_ws_manager
-            from app.routers.recommendations import recommendations_ws_manager
+            from app.api.entity_pii import ws_manager as entity_ws_manager
+            from app.routers.recommendations import recommendation_ws_manager
             
             # Debug logging
             logger.info(
@@ -341,7 +341,7 @@ class TranscriptionWebSocketManager:
                 session_id=session_id,
                 sentiment_active=session_id in sentiment_ws_manager.active_connections if sentiment_ws_manager else False,
                 entity_active=session_id in entity_ws_manager.active_connections if entity_ws_manager else False,
-                recommendations_active=session_id in recommendations_ws_manager.active_connections if recommendations_ws_manager else False
+                recommendations_active=session_id in recommendation_ws_manager.active_connections if recommendation_ws_manager else False
             )
             
             # Send sentiment update if available
@@ -367,10 +367,10 @@ class TranscriptionWebSocketManager:
                     logger.info("✓ Sent entity/PII update via WebSocket", session_id=session_id)
             
             # Send recommendations update if available
-            if recommendations_ws_manager and session_id in recommendations_ws_manager.active_connections:
+            if recommendation_ws_manager and session_id in recommendation_ws_manager.active_connections:
                 recommendations_data = session_data["data"].get("recommendations")
                 if recommendations_data:
-                    await recommendations_ws_manager.send_recommendations(session_id, recommendations_data)
+                    await recommendation_ws_manager.send_recommendations(session_id, recommendations_data)
                     logger.info("✓ Sent recommendations update via WebSocket", session_id=session_id)
                 else:
                     logger.warning("Recommendations data is None/empty", session_id=session_id)
@@ -378,7 +378,7 @@ class TranscriptionWebSocketManager:
                 logger.warning(
                     "Recommendations WebSocket not connected",
                     session_id=session_id,
-                    has_manager=recommendations_ws_manager is not None
+                    has_manager=recommendation_ws_manager is not None
                 )
                     
         except ImportError as e:

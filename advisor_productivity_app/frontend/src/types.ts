@@ -1,6 +1,6 @@
 // Type definitions for Advisor Productivity App
 
-export type ViewMode = 'unified' | 'chat' | 'analytics' | 'progress'
+export type ViewMode = 'unified' | 'chat' | 'analytics' | 'progress' | 'history'
 
 export interface TranscriptSegment {
   text: string
@@ -43,13 +43,33 @@ export interface EntityData {
   }
 }
 
+export interface ActionItem {
+  action: string
+  responsible?: string
+  deadline?: string
+  priority?: string
+  details?: string
+  context?: string
+  dependencies?: string[]
+  success_criteria?: string
+}
+
+export interface Decision {
+  decision: string
+  rationale?: string
+  impact?: string
+  stakeholders?: string[]
+  timeline?: string
+}
+
 export interface Summary {
   persona: string
   summary_type: string
   summary: string
-  action_items?: string[]
+  action_items?: (string | ActionItem)[]
   key_points?: string[]
-  decisions_made?: string[]
+  decisions_made?: (string | Decision)[]
+  client_commitments?: string[]
 }
 
 export interface SessionData {
@@ -60,4 +80,18 @@ export interface SessionData {
   summary: Summary[] | null
   isRecording: boolean
   sessionActive: boolean
+  isSummaryLoading: boolean
+}
+
+export interface HistoricalSession {
+  session_id: string
+  created_at: string
+  ended_at: string | null
+  duration_seconds: number | null
+  status: string
+  client_name: string | null
+  advisor_name: string | null
+  exchange_count: number
+  investment_readiness_score: number | null
+  key_topics: string[]
 }

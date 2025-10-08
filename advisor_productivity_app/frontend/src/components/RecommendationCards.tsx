@@ -8,6 +8,14 @@ interface RecommendationCardsProps {
 }
 
 const RecommendationCards: FC<RecommendationCardsProps> = ({ recommendations, onGenerate }) => {
+  // Debug: log what we receive
+  console.log('RecommendationCards received:', recommendations)
+  
+  // Extract the actual recommendations array from the response object
+  const recommendationsList = Array.isArray(recommendations) 
+    ? recommendations 
+    : (recommendations as any)?.investment_recommendations || []
+  
   const getRiskColor = (risk: string) => {
     switch (risk.toLowerCase()) {
       case 'low':
@@ -37,67 +45,67 @@ const RecommendationCards: FC<RecommendationCardsProps> = ({ recommendations, on
       </div>
 
       <div className="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
-        {recommendations.length === 0 ? (
+        {recommendationsList.length === 0 ? (
           <div className="text-center py-8 text-slate-400">
             <Sparkles className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>No recommendations yet. Click "Generate" to create.</p>
           </div>
         ) : (
-          recommendations
-            .sort((a, b) => a.priority - b.priority)
-            .map((rec, index) => (
+          recommendationsList
+            .sort((a: any, b: any) => (a.priority || 0) - (b.priority || 0))
+            .map((rec: any, index: number) => (
               <div
                 key={index}
-                className="border border-slate-700 rounded-lg p-4 bg-slate-750 hover:border-slate-600 transition-colors"
+                className="border border-slate-600 rounded-lg p-5 bg-slate-800/50 hover:border-primary-500/50 transition-all hover:shadow-lg"
               >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h4 className="font-semibold text-white">{rec.product_name}</h4>
-                    <p className="text-sm text-slate-400 capitalize">{rec.product_type}</p>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-white text-base mb-1">
+                      {rec.recommendation || rec.product_name || 'Investment Recommendation'}
+                    </h4>
+                    <p className="text-sm text-slate-400 capitalize">
+                      {rec.type || rec.product_type || rec.category || 'investment'}
+                    </p>
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-medium border ${getRiskColor(rec.risk_level)}`}>
-                    {rec.risk_level} Risk
+                  <span className={`px-3 py-1 rounded-md text-xs font-semibold border whitespace-nowrap ml-3 ${getRiskColor(rec.risk_level)}`}>
+                    {rec.risk_level || 'moderate'} Risk
                   </span>
                 </div>
 
-                <p className="text-sm text-slate-300 mb-3">{rec.rationale}</p>
+                <p className="text-sm text-slate-300 mb-4 leading-relaxed">{rec.rationale}</p>
 
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-slate-400">Alignment:</span>
-                    <div className="flex-1 bg-slate-700 rounded-full h-2">
-                      <div
-                        className="bg-primary-500 h-2 rounded-full"
-                        style={{ width: `${rec.alignment_score}%` }}
-                      ></div>
-                    </div>
-                    <span className="font-medium text-slate-300">{rec.alignment_score}%</span>
-                  </div>
-
-                  {rec.time_horizon && (
+                <div className="space-y-2 text-xs">
+                  {/* Alignment/Confidence Score */}
+                  {(rec.confidence !== undefined || rec.alignment_score !== undefined) && (
                     <div className="flex items-center space-x-2">
-                      <span className="text-slate-400">Horizon:</span>
-                      <span className="font-medium text-slate-300">{rec.time_horizon}</span>
+                      <span className="text-slate-400 w-20">
+                        {rec.confidence !== undefined ? 'Confidence:' : 'Alignment:'}
+                      </span>
+                      <div className="flex-1 bg-slate-700 rounded-full h-2.5">
+                        <div
+                          className="bg-primary-500 h-2.5 rounded-full transition-all"
+                          style={{ width: `${(rec.confidence || rec.alignment_score || 0) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span className="font-medium text-slate-300 w-12 text-right">
+                        {Math.round((rec.confidence || rec.alignment_score || 0) * 100)}%
+                      </span>
                     </div>
                   )}
 
-                  {rec.expected_return_range && (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-gray-600">Return:</span>
-                      <span className="font-medium">{rec.expected_return_range}</span>
+                  {/* Priority */}
+                  {rec.priority && (
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-700">
+                      <span className="text-slate-400">Priority:</span>
+                      <span className={`font-semibold px-2 py-0.5 rounded ${
+                        rec.priority === 'high' ? 'text-error-400 bg-error-500/10' :
+                        rec.priority === 'medium' ? 'text-warning-400 bg-warning-500/10' :
+                        'text-success-400 bg-success-500/10'
+                      }`}>
+                        {rec.priority}
+                      </span>
                     </div>
                   )}
-
-                  {rec.min_investment && (
-                    <div className="flex items-center space-x-2">
-                      <span className="text-gray-600">Min:</span>
-                      <span className="font-medium">${rec.min_investment.toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-gray-500">Priority: {rec.priority}</span>
                 </div>
               </div>
             ))

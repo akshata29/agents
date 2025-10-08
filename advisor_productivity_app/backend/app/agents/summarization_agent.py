@@ -274,8 +274,15 @@ class InvestmentSummarizationAgent(BaseAgent):
         if sentiment_data:
             sentiment_section = f"""
 
-Sentiment Analysis Insights:
+SENTIMENT ANALYSIS INSIGHTS:
+The following sentiment data was collected throughout the conversation:
 {json.dumps(sentiment_data, indent=2, default=str)}
+
+Use this sentiment analysis to:
+- Assess the client's emotional journey and investment readiness
+- Identify concerns, confidence levels, and decision-making patterns
+- Understand risk tolerance indicators
+- Track engagement and trust-building moments
 """
         
         # Build recommendations section
@@ -283,8 +290,15 @@ Sentiment Analysis Insights:
         if recommendations:
             recommendations_section = f"""
 
-Recommendations Discussed:
+INVESTMENT RECOMMENDATIONS GENERATED:
+The following recommendations were created based on the conversation:
 {json.dumps(recommendations, indent=2, default=str)}
+
+Incorporate these recommendations into your summary by:
+- Noting which recommendations align with discussed topics
+- Highlighting client reactions to investment suggestions
+- Tracking recommendation acceptance, questions, or concerns
+- Identifying next steps for recommendation follow-through
 """
         
         # Determine detail level
@@ -297,15 +311,20 @@ Recommendations Discussed:
         
         prompt = f"""Generate a comprehensive summary of this investment advisor-client session.
 
-Conversation Transcript ({len(transcript_segments)} segments):
+CONVERSATION TRANSCRIPT ({len(transcript_segments)} segments):
 {transcript}
 {sentiment_section}
 {recommendations_section}
 
-Summary Requirements:
+SUMMARY REQUIREMENTS:
 - Summary Type: {summary_type}
 - Target Persona: {persona}
 - {detail_guidance}
+
+IMPORTANT: Integrate the sentiment analysis and recommendations data above into your summary. 
+The summary should reflect how the client's emotional state, investment readiness, and risk 
+tolerance evolved throughout the conversation, and how the generated recommendations align 
+with the discussion topics and client needs.
 
 Provide the summary in this JSON structure:
 
@@ -365,13 +384,23 @@ Provide the summary in this JSON structure:
         "initial_state": "Client's emotional state at start",
         "final_state": "Client's emotional state at end",
         "key_shifts": ["Notable changes in sentiment or readiness"],
-        "overall_trajectory": "improving|declining|stable"
+        "overall_trajectory": "improving|declining|stable",
+        "investment_readiness_score": "Numeric score from sentiment analysis if available",
+        "dominant_emotions": ["Top emotions observed during session"]
     }},
     
     "risk_tolerance_assessment": {{
         "assessed_level": "conservative|moderate|aggressive|very_aggressive",
-        "evidence": ["Supporting observations"],
-        "confidence": "high|medium|low"
+        "evidence": ["Supporting observations from conversation and sentiment data"],
+        "confidence": "high|medium|low",
+        "consistency": "Whether stated preferences align with emotional indicators"
+    }},
+    
+    "analytics_summary": {{
+        "sentiment_insights": "How sentiment analysis informed understanding of the client",
+        "recommendation_alignment": "How well recommendations matched client needs and discussion",
+        "emotional_indicators": "Key emotional states that influenced the conversation",
+        "readiness_factors": "What contributed to or hindered investment readiness"
     }},
     
     "investment_readiness": {{

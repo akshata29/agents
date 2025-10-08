@@ -1,5 +1,5 @@
 import type { FC } from 'react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff } from 'lucide-react'
 
 interface AudioRecorderProps {
@@ -16,6 +16,13 @@ const AudioRecorder: FC<AudioRecorderProps> = ({
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
   const [audioWorkletNode, setAudioWorkletNode] = useState<AudioWorkletNode | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+
+  // Effect to stop recording when parent sets isRecording to false
+  useEffect(() => {
+    if (!isRecording && (audioContext || streamRef.current)) {
+      stopRecording()
+    }
+  }, [isRecording])
 
   const startRecording = async () => {
     try {
@@ -85,21 +92,31 @@ const AudioRecorder: FC<AudioRecorderProps> = ({
   }
 
   const stopRecording = () => {
+    console.log('Stopping recording and releasing microphone...')
+    
     // Stop audio processing
     if (audioContext) {
       audioContext.close()
       setAudioContext(null)
     }
     
-    // Stop microphone stream
+    // Stop microphone stream - this releases the microphone
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current.getTracks().forEach(track => {
+        track.stop()
+        console.log('Stopped audio track:', track.label)
+      })
       streamRef.current = null
     }
     
     setAudioWorkletNode(null)
-    onRecordingChange(false)
-    console.log('Stopped recording')
+    
+    // Only update parent if currently recording
+    if (isRecording) {
+      onRecordingChange(false)
+    }
+    
+    console.log('Microphone released')
   }
 
   return (

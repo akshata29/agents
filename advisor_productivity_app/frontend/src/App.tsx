@@ -9,6 +9,7 @@ import EntityView from './components/EntityView'
 import SummaryPanel from './components/SummaryPanel'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import SessionControls from './components/SessionControls'
+import SessionHistory from './components/SessionHistory'
 import type { SessionData, ViewMode, TranscriptSegment } from './types'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
@@ -23,7 +24,8 @@ function App() {
     entities: null,
     summary: null,
     isRecording: false,
-    sessionActive: false
+    sessionActive: false,
+    isSummaryLoading: false
   })
 
   // WebSocket connections
@@ -60,7 +62,7 @@ function App() {
         if (data.type === 'sentiment_update') {
           setSessionData(prev => ({
             ...prev,
-            sentiment: data.sentiment
+            sentiment: data.data  // Backend sends sentiment in 'data' field
           }))
         }
       }
@@ -84,11 +86,10 @@ function App() {
       recWs.onmessage = (event) => {
         const data = JSON.parse(event.data)
         if (data.type === 'recommendations_update') {
-          // Backend sends recommendations under 'data' field
-          const recommendations = data.data?.recommendations || []
+          // Backend sends the full recommendations object in 'data' field
           setSessionData(prev => ({
             ...prev,
-            recommendations: recommendations
+            recommendations: data.data
           }))
         }
       }
@@ -108,7 +109,14 @@ function App() {
   }
 
   const handleEndSession = async () => {
-    setSessionData(prev => ({ ...prev, sessionActive: false, isRecording: false }))
+    // First, stop recording immediately to release microphone
+    setSessionData(prev => ({ ...prev, isRecording: false }))
+    
+    // Give a moment for the AudioRecorder useEffect to clean up
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Now update the rest of the session state
+    setSessionData(prev => ({ ...prev, sessionActive: false, isSummaryLoading: true }))
     
     // Close WebSocket connections
     transcriptionWs?.close()
@@ -116,21 +124,75 @@ function App() {
     entityWs?.close()
     recommendationsWs?.close()
 
-    // Request summary
-    const fullTranscript = sessionData.transcript.map(t => t.text).join(' ')
+    // Automatically switch to Summary tab
+    setViewMode('progress')
+
+    // Request comprehensive summary with transcript, sentiment, and recommendations
     try {
-      const response = await fetch(`${BACKEND_URL}/summary/generate-all/${sessionId}`, {
+      const response = await fetch(`${BACKEND_URL}/summary/generate-all-personas/${sessionId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: fullTranscript,
-          personas: ['advisor', 'compliance', 'client']
+          transcript_segments: sessionData.transcript,
+          sentiment_data: sessionData.sentiment,
+          recommendations: sessionData.recommendations
         })
       })
       const summaries = await response.json()
-      setSessionData(prev => ({ ...prev, summary: summaries }))
+      console.log('📝 Summary response received:', summaries)
+      
+      // Convert dictionary to array format expected by SummaryPanel
+      const summaryArray = Object.entries(summaries).map(([persona, data]: [string, any]) => ({
+        persona,
+        ...data
+      }))
+      
+      console.log('📝 Summary array:', summaryArray)
+      setSessionData(prev => ({ ...prev, summary: summaryArray, isSummaryLoading: false }))
     } catch (error) {
       console.error('Error generating summary:', error)
+      setSessionData(prev => ({ ...prev, isSummaryLoading: false }))
+    }
+  }
+
+  const handleLoadHistoricalSession = async (historicalSessionId: string) => {
+    try {
+      console.log('Loading historical session:', historicalSessionId)
+      
+      const response = await fetch(`${BACKEND_URL}/history/sessions/${historicalSessionId}`)
+      if (!response.ok) {
+        throw new Error('Failed to load session')
+      }
+      
+      const session = await response.json()
+      console.log('Historical session loaded:', session)
+      
+      // Convert summaries dictionary to array format
+      const summaryArray = session.summaries 
+        ? Object.entries(session.summaries).map(([persona, data]: [string, any]) => ({
+            persona,
+            ...data
+          }))
+        : null
+      
+      // Load the historical data into current session
+      setSessionData({
+        transcript: session.transcript || [],
+        sentiment: session.sentiment_data || null,
+        recommendations: session.recommendations || [],
+        entities: session.entities || null,
+        summary: summaryArray,
+        isRecording: false,
+        sessionActive: false,
+        isSummaryLoading: false
+      })
+      
+      // Switch to unified view to see the data
+      setViewMode('unified')
+      
+    } catch (error) {
+      console.error('Error loading historical session:', error)
+      alert('Failed to load session. Please try again.')
     }
   }
 
@@ -192,16 +254,22 @@ function App() {
             <SummaryPanel 
               summary={sessionData.summary}
               sessionId={sessionId}
+              isLoading={sessionData.isSummaryLoading}
             />
             <EntityView entities={sessionData.entities} />
           </div>
+        )
+
+      case 'history':
+        return (
+          <SessionHistory onLoadSession={handleLoadHistoricalSession} />
         )
 
       case 'unified':
       default:
         return (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left column - Transcript and Audio */}
+            {/* Left column - Transcript, Audio, and Analytics Dashboard */}
             <div className="lg:col-span-2 space-y-6">
               <TranscriptView 
                 transcript={sessionData.transcript}
@@ -214,9 +282,13 @@ function App() {
                   setSessionData(prev => ({ ...prev, isRecording: recording }))
                 }
               />
+              <AnalyticsDashboard 
+                transcript={sessionData.transcript}
+                sentiment={sessionData.sentiment}
+              />
             </div>
 
-            {/* Right column - Analytics */}
+            {/* Right column - Sentiment, Recommendations, and Entities */}
             <div className="space-y-6">
               <SentimentGauge sentiment={sessionData.sentiment} />
               <RecommendationCards 
@@ -226,19 +298,16 @@ function App() {
               <EntityView entities={sessionData.entities} />
             </div>
 
-            {/* Full width - Dashboard and Summary */}
-            <div className="lg:col-span-3 space-y-6">
-              <AnalyticsDashboard 
-                transcript={sessionData.transcript}
-                sentiment={sessionData.sentiment}
-              />
-              {sessionData.summary && (
+            {/* Full width - Summary only */}
+            {sessionData.summary && (
+              <div className="lg:col-span-3">
                 <SummaryPanel 
                   summary={sessionData.summary}
                   sessionId={sessionId}
+                  isLoading={sessionData.isSummaryLoading}
                 />
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )
     }

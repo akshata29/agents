@@ -17,16 +17,40 @@ import structlog
 from ..infra.settings import get_settings
 from ..agents.summarization_agent import InvestmentSummarizationAgent
 from ..models.task_models import SessionSummary
+from ..models.persistence_models import AdvisorSession
+from ..persistence.cosmos_memory import CosmosMemoryStore
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/summary", tags=["summary"])
 
 
-# In-memory storage (Phase 8 will use CosmosDB)
+# In-memory storage (fallback for non-persisted data)
 session_summaries: Dict[str, Dict[str, Any]] = {}
 active_connections: Dict[str, WebSocket] = {}
 
+# Cosmos DB store
+cosmos_store: Optional[CosmosMemoryStore] = None
+
+
+async def get_cosmos_store() -> CosmosMemoryStore:
+    """Get or initialize Cosmos DB store."""
+    global cosmos_store
+    
+    if cosmos_store is None:
+        settings = get_settings()
+        cosmos_store = CosmosMemoryStore(
+            endpoint=settings.COSMOSDB_ENDPOINT,
+            database_name=settings.COSMOSDB_DATABASE,
+            container_name=settings.COSMOSDB_CONTAINER,
+            user_id="default_advisor",
+            tenant_id=settings.azure_tenant_id,
+            client_id=settings.azure_client_id,
+            client_secret=settings.azure_client_secret
+        )
+        await cosmos_store.initialize()
+    
+    return cosmos_store
 
 class SummaryWebSocketManager:
     """Manages WebSocket connections for summarization."""
@@ -302,7 +326,7 @@ async def generate_all_persona_summaries(
     request_body: Dict[str, Any] = Body(...)
 ):
     """
-    Generate summaries for all personas in parallel.
+    Generate summaries for all personas in parallel and save session to Cosmos DB.
     
     Request body:
     {
@@ -327,8 +351,85 @@ async def generate_all_persona_summaries(
             session_id=session_id
         )
         
-        # Store all summaries
+        # Store all summaries in memory
         session_summaries[session_id] = results
+        
+        # Save session to Cosmos DB
+        try:
+            store = await get_cosmos_store()
+            
+            # Calculate session metrics
+            total_words = sum(len(seg.get("text", "").split()) for seg in transcript_segments)
+            exchange_count = len(transcript_segments)
+            
+            # Extract client/advisor names if available
+            client_name = None
+            advisor_name = None
+            for seg in transcript_segments:
+                speaker = seg.get("speaker", "").lower()
+                if "client" in speaker or "unknown" in speaker:
+                    # Try to extract name from early transcript
+                    pass
+                elif "advisor" in speaker:
+                    pass
+            
+            # Extract investment readiness from sentiment
+            investment_readiness_score = None
+            risk_tolerance = None
+            key_phrases = []
+            if sentiment_data:
+                if isinstance(sentiment_data.get("investment_readiness"), dict):
+                    investment_readiness_score = sentiment_data["investment_readiness"].get("score")
+                if isinstance(sentiment_data.get("risk_tolerance"), dict):
+                    risk_tolerance = sentiment_data["risk_tolerance"].get("level")
+                key_phrases = sentiment_data.get("key_phrases", [])
+            
+            # Count decisions and actions from summaries
+            decisions_count = 0
+            action_items_count = 0
+            for persona_data in results.values():
+                if isinstance(persona_data, dict):
+                    decisions_count = max(decisions_count, len(persona_data.get("decisions_made", [])))
+                    action_items_count = max(action_items_count, len(persona_data.get("action_items", [])))
+            
+            # Create AdvisorSession model
+            session = AdvisorSession(
+                session_id=session_id,
+                user_id="default_advisor",
+                created_at=datetime.utcnow(),
+                started_at=datetime.utcnow(),
+                ended_at=datetime.utcnow(),
+                status="completed",
+                transcript=transcript_segments,
+                total_words=total_words,
+                exchange_count=exchange_count,
+                sentiment_data=sentiment_data,
+                recommendations=recommendations,
+                summaries=results,
+                client_name=client_name,
+                advisor_name=advisor_name,
+                investment_readiness_score=investment_readiness_score,
+                risk_tolerance=risk_tolerance,
+                key_phrases=key_phrases[:10] if key_phrases else [],
+                decisions_count=decisions_count,
+                action_items_count=action_items_count
+            )
+            
+            await store.save_session(session)
+            logger.info(
+                "Session saved to Cosmos DB",
+                session_id=session_id,
+                exchange_count=exchange_count,
+                total_words=total_words
+            )
+            
+        except Exception as db_error:
+            # Log but don't fail the request if DB save fails
+            logger.error(
+                "Failed to save session to Cosmos DB",
+                error=str(db_error),
+                session_id=session_id
+            )
         
         return JSONResponse(content=results)
     

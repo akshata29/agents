@@ -91,12 +91,12 @@ const AnalyticsDashboard: FC<AnalyticsDashboardProps> = ({ transcript, sentiment
       {/* Key Phrases */}
       {sentiment && sentiment.key_phrases && sentiment.key_phrases.length > 0 && (
         <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Key Phrases</h4>
+          <h4 className="text-sm font-semibold text-slate-300 mb-3">Key Phrases</h4>
           <div className="flex flex-wrap gap-2">
             {sentiment.key_phrases.map((phrase, index) => (
               <span
                 key={index}
-                className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm border border-gray-300"
+                className="px-3 py-1.5 bg-slate-700/50 text-slate-200 rounded-full text-sm border border-slate-600 hover:border-primary-500/50 transition-colors"
               >
                 {phrase}
               </span>

@@ -1,5 +1,5 @@
 import type { FC } from 'react'
-import { Play, Square, LayoutGrid, MessageSquare, BarChart3, CheckCircle2 } from 'lucide-react'
+import { Play, Square, LayoutGrid, MessageSquare, BarChart3, CheckCircle2, History } from 'lucide-react'
 import type { ViewMode } from '../types'
 
 interface SessionControlsProps {
@@ -64,6 +64,17 @@ const SessionControls: FC<SessionControlsProps> = ({
         >
           <CheckCircle2 className="w-4 h-4" />
           <span>Summary</span>
+        </button>
+        <button
+          onClick={() => onViewModeChange('history')}
+          className={`px-6 py-3 font-medium transition-colors flex items-center space-x-2 ${
+            viewMode === 'history'
+              ? 'text-primary-400 border-b-2 border-primary-400'
+              : 'text-slate-400 hover:text-slate-300'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          <span>History</span>
         </button>
       </div>
 

@@ -6,6 +6,7 @@ agent-framework-azure-ai
 # Azure dependencies  
 azure-identity
 azure-ai-inference
+azure-ai-projects
 
 # Web API dependencies
 fastapi

@@ -32,6 +32,7 @@ export interface ExecutionStatus {
   result: any;
   error: string | null;
   pattern?: string;
+  task?: string;
   agent_outputs?: AgentActivity[];
 }
 
@@ -51,4 +52,4 @@ export interface SystemStatus {
   model: string;
 }
 
-export type PatternType = 'sequential' | 'concurrent' | 'group_chat' | 'handoff' | 'magentic';
+export type PatternType = 'sequential' | 'concurrent' | 'group_chat' | 'handoff' | 'magentic' | 'enhanced_capabilities';

@@ -5,7 +5,7 @@ This provides REST API endpoints for the React frontend to interact with
 the Microsoft Agent Framework patterns.
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -16,11 +16,18 @@ import time
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from datetime import datetime
+import json
 
 # Load environment variables from .env file
 load_dotenv()
-from datetime import datetime
-import json
+
+# Import authentication
+from auth.auth_utils import get_authenticated_user_details
+
+# Import persistence layer
+from persistence.cosmos_memory import CosmosMemoryStore
+from persistence.persistence_models import PatternSession, PatternExecution
 
 # Import pattern functions
 from sequential.sequential import run_sequential_orchestration
@@ -60,6 +67,7 @@ class ExecutionStatus(BaseModel):
     result: Optional[Any] = None
     error: Optional[str] = None
     pattern: Optional[str] = None
+    task: Optional[str] = None
     agent_outputs: Optional[List[AgentActivity]] = []
 
 class PatternInfo(BaseModel):
@@ -192,6 +200,48 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Initialize CosmosDB memory store
+cosmos_store: Optional[CosmosMemoryStore] = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize CosmosDB on startup."""
+    global cosmos_store
+    
+    # Get CosmosDB configuration from environment
+    cosmos_endpoint = os.getenv("COSMOSDB_ENDPOINT")
+    cosmos_database = os.getenv("COSMOS_DB_DATABASE")
+    cosmos_container = os.getenv("COSMOS_DB_CONTAINER")
+    
+    tenant_id = os.getenv("AZURE_TENANT_ID")
+    client_id = os.getenv("AZURE_CLIENT_ID")
+    client_secret = os.getenv("AZURE_CLIENT_SECRET")
+    
+    if cosmos_endpoint and cosmos_database and cosmos_container:
+        try:
+            cosmos_store = CosmosMemoryStore(
+                endpoint=cosmos_endpoint,
+                database_name=cosmos_database,
+                container_name=cosmos_container,
+                tenant_id=tenant_id,
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            await cosmos_store.initialize()
+            print(f"✅ CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
+        except Exception as e:
+            print(f"⚠️  CosmosDB initialization failed: {e}")
+            print("   Continuing without persistence...")
+    else:
+        print("⚠️  CosmosDB not configured - running without persistence")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    global cosmos_store
+    if cosmos_store:
+        await cosmos_store.close()
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -201,7 +251,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def execute_pattern_background(execution_id: str, pattern: str, task: str):
+async def execute_pattern_background(execution_id: str, pattern: str, task: str, session_id: str = None):
     """Execute pattern in background with real-time agent activity updates."""
     execution = executions[execution_id]
     start_time = time.time()
@@ -283,6 +333,27 @@ async def execute_pattern_background(execution_id: str, pattern: str, task: str)
             execution.current_task = None
             execution.end_time = datetime.now().isoformat()
             
+            # Persist completion to CosmosDB
+            if cosmos_store and session_id:
+                try:
+                    await cosmos_store.update_execution(execution_id, {
+                        "status": "completed",
+                        "completed_at": datetime.utcnow(),
+                        "execution_time": execution.duration,
+                        "progress": 1.0,
+                        "result": execution.result,
+                        "agent_outputs": [
+                            {
+                                "agent": a.agent,
+                                "input": a.input,
+                                "output": a.output,
+                                "timestamp": a.timestamp
+                            } for a in (execution.agent_outputs or [])
+                        ]
+                    })
+                except Exception as e:
+                    print(f"⚠️  Failed to persist completion to CosmosDB: {e}")
+            
         else:
             raise ValueError(f"Unknown pattern: {pattern}")
             
@@ -291,6 +362,18 @@ async def execute_pattern_background(execution_id: str, pattern: str, task: str)
         execution.error = str(e)
         execution.end_time = datetime.now().isoformat()
         execution.duration = time.time() - start_time
+        
+        # Persist failure to CosmosDB
+        if cosmos_store and session_id:
+            try:
+                await cosmos_store.update_execution(execution_id, {
+                    "status": "failed",
+                    "completed_at": datetime.utcnow(),
+                    "execution_time": execution.duration,
+                    "error_message": str(e)
+                })
+            except Exception as persist_error:
+                print(f"⚠️  Failed to persist failure to CosmosDB: {persist_error}")
     finally:
         # Clean up event handlers
         unregister_execution_handlers(execution_id)
@@ -462,6 +545,89 @@ async def get_patterns():
     """Get available orchestration patterns."""
     return list(PATTERNS.values())
 
+@app.get("/patterns/history", response_model=List[ExecutionStatus])
+async def get_execution_history():
+    """Get execution history from memory."""
+    return list(executions.values())
+
+@app.get("/patterns/history/cosmos")
+async def get_cosmos_history(
+    http_request: Request,
+    session_id: Optional[str] = None, 
+    user_id: Optional[str] = None, 
+    limit: int = 50
+):
+    """Get execution history from CosmosDB."""
+    if not cosmos_store:
+        raise HTTPException(status_code=503, detail="CosmosDB persistence not configured")
+    
+    try:
+        # Get authenticated user if no user_id specified
+        if not user_id:
+            user_details = get_authenticated_user_details(dict(http_request.headers))
+            user_id = user_details.get("user_principal_id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="User authentication required")
+        
+        if session_id:
+            # Get executions for specific session
+            pattern_executions = await cosmos_store.get_executions_by_session(session_id)
+        else:
+            # Get executions for authenticated/specified user
+            pattern_executions = await cosmos_store.get_executions_by_user(user_id, limit)
+        
+        # Convert to ExecutionStatus format
+        return [
+            {
+                "execution_id": exec.execution_id,
+                "status": exec.status,
+                "progress": exec.progress,
+                "pattern": exec.pattern,
+                "task": exec.task,
+                "start_time": exec.started_at.isoformat() if exec.started_at else None,
+                "end_time": exec.completed_at.isoformat() if exec.completed_at else None,
+                "duration": exec.execution_time,
+                "result": exec.result,
+                "error": exec.error_message,
+                "agent_outputs": exec.agent_outputs,
+                "current_task": exec.current_task,
+                "completed_tasks": exec.completed_tasks,
+                "failed_tasks": exec.failed_tasks
+            }
+            for exec in pattern_executions
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve history: {str(e)}")
+
+@app.get("/patterns/sessions/cosmos")
+async def get_cosmos_sessions(http_request: Request, user_id: Optional[str] = None, limit: int = 50):
+    """Get sessions from CosmosDB."""
+    if not cosmos_store:
+        raise HTTPException(status_code=503, detail="CosmosDB persistence not configured")
+    
+    try:
+        # Get authenticated user if no user_id specified
+        if not user_id:
+            user_details = get_authenticated_user_details(dict(http_request.headers))
+            user_id = user_details.get("user_principal_id")
+            if not user_id:
+                raise HTTPException(status_code=401, detail="User authentication required")
+        
+        sessions = await cosmos_store.get_all_sessions(user_id, limit)
+        
+        return [
+            {
+                "session_id": session.session_id,
+                "user_id": session.user_id,
+                "created_at": session.created_at.isoformat(),
+                "last_active": session.last_active.isoformat(),
+                "metadata": session.metadata
+            }
+            for session in sessions
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve sessions: {str(e)}")
+
 @app.get("/patterns/{pattern_name}", response_model=PatternInfo)
 async def get_pattern_details(pattern_name: str):
     """Get details for a specific pattern."""
@@ -470,12 +636,25 @@ async def get_pattern_details(pattern_name: str):
     return PATTERNS[pattern_name]
 
 @app.post("/patterns/execute", response_model=PatternResponse)
-async def execute_pattern(request: PatternRequest, background_tasks: BackgroundTasks):
+async def execute_pattern(request: PatternRequest, background_tasks: BackgroundTasks, http_request: Request):
     """Execute an orchestration pattern."""
     if request.pattern not in PATTERN_FUNCTIONS:
         raise HTTPException(status_code=400, detail=f"Unknown pattern: {request.pattern}")
     
     execution_id = str(uuid.uuid4())
+    
+    # Get authenticated user from headers
+    user_details = get_authenticated_user_details(dict(http_request.headers))
+    user_id = user_details.get("user_principal_id")
+    user_name = user_details.get("user_name")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User authentication required")
+    
+    # Get or create session_id (use provided session_id or create new one)
+    session_id = request.session_id or str(uuid.uuid4())
+    
+    print(f"🔐 Executing pattern for user: {user_name} ({user_id})")
     
     # Initialize execution status
     execution = ExecutionStatus(
@@ -483,13 +662,42 @@ async def execute_pattern(request: PatternRequest, background_tasks: BackgroundT
         status="pending",
         progress=0.0,
         pattern=request.pattern,
+        task=request.task,
         agent_outputs=[]
     )
     
     executions[execution_id] = execution
     
+    # Persist to CosmosDB if available
+    if cosmos_store:
+        try:
+            # Create or update session
+            existing_session = await cosmos_store.get_session(session_id)
+            if not existing_session:
+                pattern_session = PatternSession(
+                    session_id=session_id,
+                    user_id=user_id,
+                    metadata={"pattern": request.pattern}
+                )
+                await cosmos_store.create_session(pattern_session)
+            else:
+                await cosmos_store.update_session(session_id, {"last_active": datetime.utcnow()})
+            
+            # Create execution record
+            pattern_execution = PatternExecution(
+                execution_id=execution_id,
+                session_id=session_id,
+                user_id=user_id,
+                pattern=request.pattern,
+                task=request.task,
+                status="pending"
+            )
+            await cosmos_store.create_execution(pattern_execution)
+        except Exception as e:
+            print(f"⚠️  Failed to persist execution to CosmosDB: {e}")
+    
     # Start background execution
-    background_tasks.add_task(execute_pattern_background, execution_id, request.pattern, request.task)
+    background_tasks.add_task(execute_pattern_background, execution_id, request.pattern, request.task, session_id)
     
     return PatternResponse(
         execution_id=execution_id,
@@ -518,11 +726,6 @@ async def cancel_execution(execution_id: str):
         execution.current_task = None
     
     return {"message": "Execution cancelled"}
-
-@app.get("/patterns/history", response_model=List[ExecutionStatus])
-async def get_execution_history():
-    """Get execution history."""
-    return list(executions.values())
 
 @app.get("/system/status", response_model=SystemStatus)
 async def get_system_status():

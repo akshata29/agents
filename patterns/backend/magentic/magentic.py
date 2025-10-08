@@ -370,7 +370,7 @@ async def _simulate_magentic_pattern(
     print("\n🔍 Phase 2: Research & Analysis")
     ledger.add_task("RESEARCH_SIM", "Gather supporting information", "Researcher")
     
-    # Simulate tool usage
+    # Use Azure AI Foundry tools
     weather_data = get_weather("Global")
     search_results = search_web("employee wellness programs best practices")
     

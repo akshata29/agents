@@ -202,6 +202,24 @@ const ExecutionMonitor: React.FC<ExecutionMonitorProps> = ({ executionId }) => {
           </div>
         </div>
 
+        {/* Pattern and Objective Information */}
+        {(status.pattern || status.task) && (
+          <div className="mb-4 space-y-3">
+            {status.pattern && (
+              <div className="bg-slate-700/50 rounded-lg p-3">
+                <div className="text-sm text-slate-400 mb-1">Pattern</div>
+                <div className="text-white font-medium capitalize">{status.pattern.replace('_', ' ')}</div>
+              </div>
+            )}
+            {status.task && (
+              <div className="bg-slate-700/50 rounded-lg p-3">
+                <div className="text-sm text-slate-400 mb-1">Objective</div>
+                <div className="text-white">{status.task}</div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Status Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-slate-700/50 rounded-lg p-4">

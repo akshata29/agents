@@ -299,15 +299,15 @@ class CosmosMemoryStore:
             if execution.completed_at:
                 execution_dict["completed_at"] = execution.completed_at.isoformat()
             
-            logger.info(f"📝 Creating PatternExecution in Cosmos DB: execution_id={execution.execution_id}, session_id={execution.session_id}, pattern={execution.pattern}")
+            logger.info(f"Creating PatternExecution in Cosmos DB: execution_id={execution.execution_id}, session_id={execution.session_id}, pattern={execution.pattern}")
             
             await self._container.create_item(body=execution_dict)
             
-            logger.info(f"✅ PatternExecution created successfully in Cosmos DB: execution_id={execution.execution_id}, pattern={execution.pattern}, user_id={execution.user_id}")
+            logger.info(f"PatternExecution created successfully in Cosmos DB: execution_id={execution.execution_id}, pattern={execution.pattern}, user_id={execution.user_id}")
             return execution
             
         except Exception as e:
-            logger.error(f"❌ Failed to create PatternExecution in Cosmos DB: {e}, execution_id={execution.execution_id}", exc_info=True)
+            logger.error(f"Failed to create PatternExecution in Cosmos DB: {e}, execution_id={execution.execution_id}", exc_info=True)
             raise
     
     async def get_execution(self, execution_id: str) -> Optional[PatternExecution]:

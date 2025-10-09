@@ -258,15 +258,15 @@ async def startup_event():
                 client_secret=client_secret
             )
             await cosmos_store.initialize()
-            logger.info(f"✅ CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
-            print(f"✅ CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
+            logger.info(f"CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
+            print(f"[OK] CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
         except Exception as e:
-            logger.warning(f"⚠️  CosmosDB initialization failed: {e}")
-            print(f"⚠️  CosmosDB initialization failed: {e}")
+            logger.warning(f"CosmosDB initialization failed: {e}")
+            print(f"[WARNING] CosmosDB initialization failed: {e}")
             print("   Continuing without persistence...")
     else:
-        logger.info("⚠️  CosmosDB not configured - running without persistence")
-        print("⚠️  CosmosDB not configured - running without persistence")
+        logger.info("CosmosDB not configured - running without persistence")
+        print("[WARNING] CosmosDB not configured - running without persistence")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -394,7 +394,7 @@ async def execute_pattern_background(execution_id: str, pattern: str, task: str,
                         ]
                     })
                 except Exception as e:
-                    print(f"⚠️  Failed to persist completion to CosmosDB: {e}")
+                    print(f"[WARNING] Failed to persist completion to CosmosDB: {e}")
             
         else:
             raise ValueError(f"Unknown pattern: {pattern}")
@@ -415,7 +415,7 @@ async def execute_pattern_background(execution_id: str, pattern: str, task: str,
                     "error_message": str(e)
                 })
             except Exception as persist_error:
-                print(f"⚠️  Failed to persist failure to CosmosDB: {persist_error}")
+                print(f"[WARNING] Failed to persist failure to CosmosDB: {persist_error}")
     finally:
         # Clean up event handlers
         unregister_execution_handlers(execution_id)
@@ -736,7 +736,7 @@ async def execute_pattern(request: PatternRequest, background_tasks: BackgroundT
             )
             await cosmos_store.create_execution(pattern_execution)
         except Exception as e:
-            print(f"⚠️  Failed to persist execution to CosmosDB: {e}")
+            print(f"[WARNING] Failed to persist execution to CosmosDB: {e}")
     
     # Start background execution
     logger.info(f"Starting background execution for {request.pattern} pattern (mode: {request.mode})")

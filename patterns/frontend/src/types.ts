@@ -3,6 +3,7 @@ export interface PatternRequest {
   pattern: string;
   task: string;
   session_id?: string;
+  mode?: string;  // For deep_research: baseline, reviewer, analyst, private, multimodal, full
 }
 
 export interface PatternResponse {
@@ -52,4 +53,4 @@ export interface SystemStatus {
   model: string;
 }
 
-export type PatternType = 'sequential' | 'concurrent' | 'group_chat' | 'handoff' | 'magentic' | 'enhanced_capabilities';
+export type PatternType = 'sequential' | 'concurrent' | 'group_chat' | 'handoff' | 'magentic' | 'deep_research' | 'enhanced_capabilities';

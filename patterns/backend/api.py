@@ -14,13 +14,26 @@ import asyncio
 import uuid
 import time
 import os
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 import json
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('patterns_api.log')
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Load environment variables from .env file
 load_dotenv()
+logger.info("Environment variables loaded")
 
 # Import authentication
 from auth.auth_utils import get_authenticated_user_details
@@ -35,12 +48,14 @@ from concurrent_pattern.concurrent import run_concurrent_orchestration
 from group_chat.group_chat import run_group_chat_orchestration
 from handoff.handoff import run_handoff_orchestration
 from magentic.magentic import run_magentic_orchestration
+from react.react import run_deep_research_orchestration
 
 # Pydantic models for API
 class PatternRequest(BaseModel):
     pattern: str
     task: str
     session_id: Optional[str] = None
+    mode: Optional[str] = None  # For deep_research pattern: baseline, reviewer, analyst, private, multimodal, full
 
 class PatternResponse(BaseModel):
     execution_id: str
@@ -182,6 +197,20 @@ PATTERNS = {
             "Task tracking",
             "Resource management"
         ]
+    ),
+    "deep_research": PatternInfo(
+        name="Deep Research",
+        description="Comprehensive research orchestration: ReAct planning, concurrent search, code analysis, and cited reporting",
+        icon="🔬",
+        agents=["Planner", "Researcher", "ConcurrentSearch", "Writer", "Analyst", "Reviewer"],
+        example_scenario="AI Impact Analysis",
+        use_cases=[
+            "Comprehensive market research",
+            "Technical deep-dives with documentation",
+            "Academic research with citations",
+            "Multi-source intelligence gathering",
+            "Private knowledge discovery"
+        ]
     )
 }
 
@@ -192,6 +221,7 @@ PATTERN_FUNCTIONS = {
     "group_chat": run_group_chat_orchestration,
     "handoff": run_handoff_orchestration,
     "magentic": run_magentic_orchestration,
+    "deep_research": run_deep_research_orchestration,
 }
 
 app = FastAPI(
@@ -228,11 +258,14 @@ async def startup_event():
                 client_secret=client_secret
             )
             await cosmos_store.initialize()
+            logger.info(f"✅ CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
             print(f"✅ CosmosDB persistence initialized: {cosmos_database}/{cosmos_container}")
         except Exception as e:
+            logger.warning(f"⚠️  CosmosDB initialization failed: {e}")
             print(f"⚠️  CosmosDB initialization failed: {e}")
             print("   Continuing without persistence...")
     else:
+        logger.info("⚠️  CosmosDB not configured - running without persistence")
         print("⚠️  CosmosDB not configured - running without persistence")
 
 @app.on_event("shutdown")
@@ -251,10 +284,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def execute_pattern_background(execution_id: str, pattern: str, task: str, session_id: str = None):
+async def execute_pattern_background(execution_id: str, pattern: str, task: str, session_id: str = None, mode: str = None):
     """Execute pattern in background with real-time agent activity updates."""
     execution = executions[execution_id]
     start_time = time.time()
+    
+    logger.info(f"Starting execution {execution_id} for pattern: {pattern}")
+    logger.info(f"Task: {task[:100]}...")
     
     try:
         execution.status = "running"
@@ -277,6 +313,7 @@ async def execute_pattern_background(execution_id: str, pattern: str, task: str,
         if pattern in PATTERN_FUNCTIONS:
             try:
                 # Try to call the enhanced pattern function with real-time callbacks
+                logger.info(f"Attempting to execute {pattern} pattern with real-time updates...")
                 print(f"Attempting to execute {pattern} pattern with real-time updates...")
                 
                 # Create a callback to add agent activities in real-time
@@ -298,12 +335,17 @@ async def execute_pattern_background(execution_id: str, pattern: str, task: str,
                     execution.progress = 0.3 + (0.6 * min(actual_agents / expected_agents, 1.0))
                     execution.current_task = f"{agent_name} completed"
                 
-                # Call pattern function with callback support
-                real_outputs = await call_pattern_with_callback(
-                    PATTERN_FUNCTIONS[pattern], 
-                    task, 
-                    agent_activity_callback
-                )
+                # Call pattern function with mode support for deep_research
+                if pattern == "deep_research" and mode:
+                    logger.info(f"Executing deep_research with mode: {mode}")
+                    real_outputs = await run_deep_research_orchestration(task=task, mode=mode)
+                else:
+                    # Call pattern function with callback support
+                    real_outputs = await call_pattern_with_callback(
+                        PATTERN_FUNCTIONS[pattern], 
+                        task, 
+                        agent_activity_callback
+                    )
                 
                 if real_outputs:
                     # Ensure we have all activities captured
@@ -697,12 +739,13 @@ async def execute_pattern(request: PatternRequest, background_tasks: BackgroundT
             print(f"⚠️  Failed to persist execution to CosmosDB: {e}")
     
     # Start background execution
-    background_tasks.add_task(execute_pattern_background, execution_id, request.pattern, request.task, session_id)
+    logger.info(f"Starting background execution for {request.pattern} pattern (mode: {request.mode})")
+    background_tasks.add_task(execute_pattern_background, execution_id, request.pattern, request.task, session_id, request.mode)
     
     return PatternResponse(
         execution_id=execution_id,
         status="pending",
-        message=f"Started execution of {request.pattern} pattern",
+        message=f"Started execution of {request.pattern} pattern" + (f" (mode: {request.mode})" if request.mode else ""),
         pattern=request.pattern
     )
 

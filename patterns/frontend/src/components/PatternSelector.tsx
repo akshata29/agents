@@ -14,7 +14,8 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  Microscope
 } from 'lucide-react';
 
 interface PatternSelectorProps {
@@ -185,6 +186,54 @@ const PATTERN_METADATA = {
         task: 'Launch our e-commerce platform in three new international markets, requiring legal compliance, payment integration, logistics setup, marketing localization, and customer support infrastructure coordination.'
       }
     ]
+  },
+  deep_research: {
+    icon: Microscope,
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/20',
+    description: 'Comprehensive research orchestration: ReAct planning, concurrent search, code analysis, and cited reporting',
+    scenario: 'AI Impact Analysis',
+    defaultTask: 'Conduct comprehensive research on the adoption and impact of Large Language Models in enterprise software development, including productivity gains, security concerns, best practices for integration, and future trends.',
+    agents: ['Planner', 'Researcher', 'ConcurrentSearch', 'Writer', 'Analyst', 'Reviewer'],
+    quickTasks: [
+      {
+        title: 'Market Research Study',
+        description: 'Multi-source competitive analysis',
+        task: 'Research the cloud infrastructure market including AWS, Azure, and Google Cloud, analyzing market share, pricing strategies, unique features, enterprise adoption rates, and future technology roadmaps with proper citations.',
+        recommendedMode: 'baseline'
+      },
+      {
+        title: 'Technology Deep Dive',
+        description: 'Technical documentation research',
+        task: 'Conduct deep technical research on implementing microservices architecture for enterprise applications, including best practices, common pitfalls, monitoring strategies, security considerations, and real-world case studies.',
+        recommendedMode: 'baseline'
+      },
+      {
+        title: 'Academic Literature Review',
+        description: 'Scholarly research synthesis',
+        task: 'Comprehensive literature review on AI safety and alignment research, covering current approaches, key challenges, prominent researchers, recent breakthroughs, and future research directions with academic citations.',
+        recommendedMode: 'reviewer'
+      },
+      {
+        title: 'Industry Trend Analysis',
+        description: 'Multi-perspective trend research',
+        task: 'Analyze emerging trends in sustainable technology and green computing, including renewable energy data centers, carbon-neutral cloud services, energy-efficient AI models, and corporate sustainability initiatives.',
+        recommendedMode: 'analyst'
+      },
+      {
+        title: 'Regulatory Compliance Research',
+        description: 'Legal and compliance deep-dive',
+        task: 'Research GDPR, CCPA, and emerging data privacy regulations globally, analyzing compliance requirements, implementation strategies, penalties for non-compliance, and best practices for multi-jurisdictional operations.',
+        recommendedMode: 'reviewer'
+      },
+      {
+        title: 'Competitive Intelligence',
+        description: 'Strategic competitor analysis',
+        task: 'Deep competitive analysis of the electric vehicle market, examining Tesla, Rivian, and traditional automakers, covering technology innovations, market positioning, supply chain strategies, and investment in R&D.',
+        recommendedMode: 'analyst'
+      }
+    ]
   }
 };
 
@@ -197,6 +246,7 @@ const PatternSelector = ({
   const [selectedPattern, setSelectedPattern] = useState<PatternType>('sequential');
   const [customTask, setCustomTask] = useState('');
   const [useCustomTask, setUseCustomTask] = useState(false);
+  const [researchMode, setResearchMode] = useState<string>('baseline');
 
   const executePatternMutation = useMutation({
     mutationFn: apiClient.executePattern,
@@ -211,11 +261,18 @@ const PatternSelector = ({
       ? customTask.trim() 
       : metadata.defaultTask;
 
-    executePatternMutation.mutate({
+    const requestPayload: any = {
       pattern: selectedPattern,
       task,
       session_id: sessionId
-    });
+    };
+
+    // Add mode for deep_research pattern
+    if (selectedPattern === 'deep_research') {
+      requestPayload.mode = researchMode;
+    }
+
+    executePatternMutation.mutate(requestPayload);
   };
 
   if (isLoading) {
@@ -367,13 +424,24 @@ const PatternSelector = ({
               onClick={() => {
                 setCustomTask(quickTask.task);
                 setUseCustomTask(true);
+                // Set recommended mode for deep_research
+                if (selectedPattern === 'deep_research' && quickTask.recommendedMode) {
+                  setResearchMode(quickTask.recommendedMode);
+                }
               }}
               className="w-full text-left p-4 rounded-lg bg-slate-700/50 border border-slate-600 hover:border-slate-500 transition-all duration-200 group"
             >
               <div className="flex items-start space-x-3">
                 <div className="flex-1">
-                  <div className="font-medium text-white group-hover:text-primary-300 transition-colors">
-                    {quickTask.title}
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-white group-hover:text-primary-300 transition-colors">
+                      {quickTask.title}
+                    </div>
+                    {selectedPattern === 'deep_research' && quickTask.recommendedMode && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        {quickTask.recommendedMode}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-slate-400 mt-1">
                     {quickTask.description}
@@ -385,6 +453,50 @@ const PatternSelector = ({
           ))}
         </div>
       </div>
+
+      {/* Deep Research Mode Selector */}
+      {selectedPattern === 'deep_research' && (
+        <div className="bg-slate-800 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Research Mode</h3>
+          <p className="text-sm text-slate-400 mb-4">
+            Choose the execution mode for your deep research
+          </p>
+          
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { value: 'baseline', label: 'Baseline', desc: 'Standard research workflow' },
+              { value: 'reviewer', label: 'Reviewer', desc: 'With quality review loop' },
+              { value: 'analyst', label: 'Analyst', desc: 'Code interpreter analysis' },
+              { value: 'full', label: 'Full', desc: 'All features enabled' }
+            ].map((mode) => (
+              <button
+                key={mode.value}
+                onClick={() => setResearchMode(mode.value)}
+                className={`p-3 rounded-lg border-2 transition-all ${
+                  researchMode === mode.value
+                    ? 'border-cyan-500 bg-cyan-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:border-slate-500'
+                }`}
+              >
+                <div className="font-medium text-white text-sm">{mode.label}</div>
+                <div className="text-xs text-slate-400 mt-1">{mode.desc}</div>
+              </button>
+            ))}
+          </div>
+          
+          <div className="mt-4 p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+            <div className="text-xs text-slate-300">
+              <strong>Current Mode:</strong> <span className="text-cyan-300">{researchMode}</span>
+            </div>
+            <div className="text-xs text-slate-400 mt-1">
+              {researchMode === 'baseline' && '→ Planner → Researcher → Concurrent Search → Writer'}
+              {researchMode === 'reviewer' && '→ Baseline + Reviewer critique and revision'}
+              {researchMode === 'analyst' && '→ Baseline + Code Interpreter data analysis'}
+              {researchMode === 'full' && '→ All agents + Analyst + Reviewer + Advanced features'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {renderTaskConfiguration() as JSX.Element}
 

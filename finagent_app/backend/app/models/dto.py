@@ -7,19 +7,6 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
 
-# Import from framework
-try:
-    from agent_framework.core.orchestrator import ExecutionStatus
-    from agent_framework.patterns import SequentialPattern, ConcurrentPattern, HandoffPattern
-except ImportError:
-    # Fallback
-    class ExecutionStatus(str, Enum):
-        PENDING = "pending"
-        RUNNING = "running"
-        COMPLETED = "completed"
-        FAILED = "failed"
-        CANCELLED = "cancelled"
-
 
 class OrchestrationPattern(str, Enum):
     """Orchestration patterns for API."""

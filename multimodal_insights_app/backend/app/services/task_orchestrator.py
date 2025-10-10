@@ -9,21 +9,11 @@ import asyncio
 import json
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 import structlog
-import sys
-from pathlib import Path
 
-# Add framework to path
-repo_root = Path(__file__).parent.parent.parent.parent.parent
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-
-# Framework imports
-from framework.core.planning import DynamicPlanner
-from framework.core.orchestrator import MagenticOrchestrator
-from framework.agents.factory import AgentFactory
-from framework.config.settings import Settings as FrameworkSettings
+from ..maf import MAFAgentFactory, MAFDynamicPlanner, MAFOrchestrator, PlanParsingError, PlanStep
 
 from ..models.task_models import (
     InputTask, Plan, Step, AgentMessage, PlanStatus, StepStatus,
@@ -68,123 +58,35 @@ class TaskOrchestrator:
         self.summarizer_agent = SummarizerAgent(settings)
         self.analytics_agent = AnalyticsAgent(settings)
         
-        # Framework components
-        framework_settings = self._create_framework_settings()
-        self.planner = DynamicPlanner(framework_settings)
-        self.orchestrator = MagenticOrchestrator(framework_settings)
-        
-        # Initialize agent factory and create planning agent
-        self.agent_factory = AgentFactory(framework_settings)
-        self.planning_agent = self.agent_factory.create_agent(
+        # Native Microsoft Agent Framework components
+        self.agent_factory = MAFAgentFactory(self.settings)
+        self.planning_agent = self.agent_factory.create_chat_agent(
             agent_type="planner",
-            name="multimodal_planner"
+            name="multimodal_planner",
         )
+        self.planner = MAFDynamicPlanner(self.planning_agent)
+        self.orchestrator = MAFOrchestrator()
         
         logger.info("Task Orchestrator initialized")
     
     async def initialize_agents(self):
-        """Initialize and register MAF-compatible agents with the orchestrator registry."""
-        from framework.core.registry import AgentMetadata, AgentCapability as RegistryCapability
-        
-        # MAF agents don't need initialization - they're ready to use
-        # Register agents with orchestrator's agent registry
-        logger.info("Registering MAF-compliant agents with orchestrator")
-        
-        # Register multimodal_processor
-        await self.orchestrator.agent_registry.register_agent(
-            name="multimodal_processor",
-            agent=self.multimodal_processor,
-            metadata=AgentMetadata(
-                id="multimodal_processor",
-                name="multimodal_processor",
-                description="Processes audio, video, and PDF files",
-                capabilities=[
-                    RegistryCapability(
-                        name=cap,
-                        description=f"{cap} capability",
-                        parameters={},
-                        required_tools=[]
-                    )
-                    for cap in self.multimodal_processor.capabilities
-                ]
-            )
-        )
+        """Register native Microsoft Agent Framework agents with the orchestrator."""
+
+        logger.info("Registering agents with native MAF orchestrator")
+
+        self.orchestrator.register_agent("multimodal_processor", self.multimodal_processor)
         logger.info("Registered multimodal_processor agent")
-        
-        # Register sentiment agent
-        await self.orchestrator.agent_registry.register_agent(
-            name="sentiment",
-            agent=self.sentiment_agent,
-            metadata=AgentMetadata(
-                id="sentiment",
-                name="sentiment",
-                description="Analyzes sentiment, emotions, and tone",
-                capabilities=[
-                    RegistryCapability(
-                        name=cap,
-                        description=f"{cap} capability",
-                        parameters={},
-                        required_tools=[]
-                    )
-                    for cap in self.sentiment_agent.capabilities
-                ]
-            )
-        )
+
+        self.orchestrator.register_agent("sentiment", self.sentiment_agent)
         logger.info("Registered sentiment agent")
-        
-        # Register summarizer agent
-        await self.orchestrator.agent_registry.register_agent(
-            name="summarizer",
-            agent=self.summarizer_agent,
-            metadata=AgentMetadata(
-                id="summarizer",
-                name="summarizer",
-                description="Creates flexible summaries with persona-based customization",
-                capabilities=[
-                    RegistryCapability(
-                        name=cap,
-                        description=f"{cap} capability",
-                        parameters={},
-                        required_tools=[]
-                    )
-                    for cap in self.summarizer_agent.capabilities
-                ]
-            )
-        )
+
+        self.orchestrator.register_agent("summarizer", self.summarizer_agent)
         logger.info("Registered summarizer agent")
-        
-        # Register analytics agent
-        await self.orchestrator.agent_registry.register_agent(
-            name="analytics",
-            agent=self.analytics_agent,
-            metadata=AgentMetadata(
-                id="analytics",
-                name="analytics",
-                description="Performs dynamic analytics and insight extraction",
-                capabilities=[
-                    RegistryCapability(
-                        name=cap,
-                        description=f"{cap} capability",
-                        parameters={},
-                        required_tools=[]
-                    )
-                    for cap in self.analytics_agent.capabilities
-                ]
-            )
-        )
+
+        self.orchestrator.register_agent("analytics", self.analytics_agent)
         logger.info("Registered analytics agent")
-        
-        logger.info("All MAF-compliant agents registered successfully")
-    
-    def _create_framework_settings(self) -> FrameworkSettings:
-        """Create framework settings from app settings."""
-        return FrameworkSettings(
-            azure_openai_endpoint=self.settings.AZURE_OPENAI_ENDPOINT,
-            azure_openai_key=self.settings.AZURE_OPENAI_API_KEY,
-            azure_openai_deployment=self.settings.AZURE_OPENAI_DEPLOYMENT,
-            azure_openai_api_version=self.settings.AZURE_OPENAI_API_VERSION
-        )
-    
+
+        logger.info("All native MAF agents registered successfully")
     async def initialize(self):
         """Initialize orchestrator resources."""
         await self.memory_store.initialize()
@@ -382,100 +284,144 @@ Based on the user's objective and uploaded files, create an execution plan that 
         summary_type: str = "detailed",
         persona: str = "executive"
     ) -> List[Dict[str, Any]]:
-        """
-        Generate execution plan using LLM-powered DynamicPlanner.
-        
-        Args:
-            context: Planning context with objective and files
-            files_info: List of file information dictionaries
-            summary_type: Type of summary (brief, detailed, comprehensive)
-            persona: Target audience (executive, technical, general)
-        
-        Returns list of step dictionaries with action, agent, and parameters.
-        """
-        from framework.agents.base import AgentMessage
-        
+        """Generate execution plan using the native MAF planner."""
+
         # Detect file types for intelligent planning
         has_audio_video = any(f.get("file_type") in ["audio", "video"] for f in files_info)
         has_pdf = any(f.get("file_type") == "pdf" for f in files_info)
-        
+
         # Extract just the objective from context (remove file list and capabilities)
-        objective = context.split("User Objective:")[1].split("\n\n")[0].strip() if "User Objective:" in context else context
-        
-        # Build files summary for the planner
-        files_summary = ""
-        if files_info:
-            files_summary = "Uploaded Files:\n"
-            for f in files_info:
-                files_summary += f"  - {f['filename']} ({f['file_type']})\n"
-        
-        # Determine step guidance based on objective and file types
+        objective = (
+            context.split("User Objective:")[1].split("\n\n")[0].strip()
+            if "User Objective:" in context
+            else context
+        )
+
+        planning_rules = self._compose_planning_rules(
+            objective=objective,
+            summary_type=summary_type,
+            persona=persona,
+            has_audio_video=has_audio_video,
+            has_pdf=has_pdf,
+        )
+
+        planner = MAFDynamicPlanner(self.planning_agent, planning_rules=planning_rules)
+
+        try:
+            plan_steps = await planner.generate_plan(
+                objective=objective,
+                files_info=files_info,
+                summary_type=summary_type,
+                persona=persona,
+            )
+        except PlanParsingError as err:
+            logger.warning(
+                "MAF planner returned unparsable response, falling back",
+                error=str(err),
+            )
+            plan_steps = []
+        except Exception as err:
+            logger.error("Failed to create plan with native MAF planner", error=str(err))
+            raise
+
+        steps_plan = self._convert_plan_steps(plan_steps, files_info, objective)
+
+        if not steps_plan:
+            logger.warning("MAF planner produced no valid steps, creating default plan")
+            steps_plan = self._build_default_plan(
+                files_info=files_info,
+                objective=objective,
+                summary_type=summary_type,
+                persona=persona,
+            )
+
+        logger.info(
+            "Plan generated with native MAF planner",
+            steps_count=len(steps_plan),
+            step_agents=[step.get("agent") for step in steps_plan],
+        )
+
+        return steps_plan
+
+    def _compose_planning_rules(
+        self,
+        *,
+        objective: str,
+        summary_type: str,
+        persona: str,
+        has_audio_video: bool,
+        has_pdf: bool,
+    ) -> str:
+        """Build planning rules string tailored to the current objective and files."""
+
         objective_lower = objective.lower()
-        
-        # Build intelligent guidance
         if has_pdf and not has_audio_video:
-            # PDF document analysis
             if any(term in objective_lower for term in ["sec", "10-k", "10-q", "filing", "financial", "risk"]):
-                step_guidance = "For SEC/financial document analysis: Step 1 processes ALL files together. Then create comprehensive executive summary addressing all objective points, then perform analytics with risk/financial focus. SKIP sentiment analysis unless explicitly requested."
+                step_guidance = (
+                    "For SEC/financial document analysis: Step 1 processes ALL files together. "
+                    "Then create comprehensive executive summary addressing all objective points, "
+                    "then perform analytics with risk/financial focus. SKIP sentiment analysis unless explicitly requested."
+                )
             else:
-                step_guidance = "For PDF documents: Step 1 processes ALL files together. Then summarize and analyze. SKIP sentiment analysis unless explicitly requested."
+                step_guidance = (
+                    "For PDF documents: Step 1 processes ALL files together. Then summarize and analyze. "
+                    "SKIP sentiment analysis unless explicitly requested."
+                )
         elif has_audio_video and not has_pdf:
-            # Audio/Video analysis
-            step_guidance = "For audio/video files: Step 1 processes ALL files together (transcription via Speech-to-Text). Then analyze sentiment/emotions, summarize for intended audience, and extract insights."
+            step_guidance = (
+                "For audio/video files: Step 1 processes ALL files together (transcription via Speech-to-Text). "
+                "Then analyze sentiment/emotions, summarize for intended audience, and extract insights."
+            )
         else:
-            # Mixed files
-            step_guidance = "For mixed file types: Step 1 processes ALL files together (audio via Speech-to-Text, PDF via Document Intelligence). Then create analysis plan that addresses the objective. Include sentiment analysis only for audio/video content or if explicitly requested."
-        
-        # Create detailed planning prompt
-        planning_task = f"""Create a multimodal content analysis plan for:
-{objective}
+            step_guidance = (
+                "For mixed file types: Step 1 processes ALL files together (audio via Speech-to-Text, PDF via Document Intelligence). "
+                "Then create analysis plan that addresses the objective. Include sentiment analysis only for audio/video content or if explicitly requested."
+            )
 
-{files_summary}
+        agent_capabilities = (
+            "Available Agents:\n"
+            "1. MultimodalProcessor_Agent - Processes audio, video, and PDF files\n"
+            "   - Audio: Transcription via Azure Speech-to-Text\n"
+            "   - Video: Extract audio and transcribe\n"
+            "   - PDF: Extract content via Azure Document Intelligence\n\n"
+            "2. Sentiment_Agent - Analyzes sentiment, emotions, and tone\n"
+            "   - Multi-dimensional sentiment analysis\n"
+            "   - Emotion detection\n"
+            "   - Tone analysis\n"
+            "   - Speaker tracking for conversations\n\n"
+            "3. Summarizer_Agent - Creates flexible summaries\n"
+            "   - Multiple summary levels (brief, detailed, comprehensive)\n"
+            "   - Persona-based (executive, technical, general)\n"
+            "   - Multi-document synthesis\n\n"
+            "4. Analytics_Agent - Performs deep analytics\n"
+            "   - Context-aware analysis\n"
+            "   - Pattern extraction\n"
+            "   - Product/service analysis\n"
+            "   - Recommendations and next-best-actions"
+        )
 
-⚠️ CRITICAL PLANNING RULES:
-1. ALWAYS create EXACTLY ONE file processing step (Step 1) that processes ALL uploaded files together
-2. Choose analysis agents based on file type and objective keywords:
-   - Sentiment: ONLY for audio/video files OR if explicitly requested (keywords: sentiment, emotion, tone, feeling)
-   - Summarizer: ALWAYS include for comprehensive analysis (use objective to determine persona and type)
-   - Analytics: Include when analysis, insights, patterns, recommendations, or extraction is requested
-3. Pass the FULL objective as "objective_context" parameter to Summarizer and Analytics agents
-4. For SEC/financial documents: use comprehensive executive summary + analytics with risk/financial focus
-5. All analysis steps work on the COMBINED content from all files
-
-Available Agents:
-1. MultimodalProcessor_Agent - File processing (ALWAYS Step 1, ONE STEP ONLY)
-   Tools:
-   - process_files: Process ALL uploaded files (audio, video, PDF) in a single step
-   ⚠️ IMPORTANT: Create only ONE step that processes all files together, not separate steps per file
-
-2. Sentiment_Agent - Sentiment and emotion analysis
-   Tools:
-   - analyze_sentiment: Multi-dimensional sentiment, emotions, tone
-   Use ONLY for: audio/video files OR if sentiment explicitly requested
-
-3. Summarizer_Agent - Flexible summarization
-   Tools:
-   - summarize: Create summaries (brief/detailed/comprehensive, executive/technical/general personas)
-   Parameters: summary_type, persona, objective_context (MUST include)
-   Use for: comprehensive analysis, requested summaries, executive insights
-
-4. Analytics_Agent - Deep analytics
-   Tools:
-   - analyze: Extract insights, patterns, recommendations
-   Parameters: analysis_focus (risk_analysis, financial_metrics, strategic_insights, etc.), objective_context (MUST include)
-   Use for: analysis requests, insight extraction, pattern identification
+        rules = f"""{agent_capabilities}
 
 {step_guidance}
 
-CRITICAL FORMATTING RULES:
-- Format EXACTLY as: "Step N: Action. Agent: AgentName. Tool: tool_name. Parameters: {{key: value}}"
-- Agent names MUST match exactly: MultimodalProcessor_Agent, Sentiment_Agent, Summarizer_Agent, Analytics_Agent
-- ALWAYS include Parameters field for Summarizer and Analytics with objective_context
-- NO dependencies (sequential execution handles this automatically)
-- Step 1 MUST be MultimodalProcessor_Agent and process ALL files in ONE step
+⚠️ CRITICAL PLANNING RULES:
+1. ALWAYS create EXACTLY ONE file processing step (Step 1) that processes ALL uploaded files together.
+2. Choose analysis agents based on file type and objective keywords:
+   - Sentiment: ONLY for audio/video files OR if explicitly requested (keywords: sentiment, emotion, tone, feeling).
+   - Summarizer: ALWAYS include for comprehensive analysis (use objective to determine persona and type).
+   - Analytics: Include when analysis, insights, patterns, recommendations, or extraction is requested.
+3. Pass the FULL objective as "objective_context" parameter to Summarizer and Analytics agents.
+4. For SEC/financial documents: use comprehensive executive summary + analytics with risk/financial focus.
+5. All analysis steps work on the COMBINED content from all files.
 
-EXACT FORMAT EXAMPLES:
+FORMAT REQUIREMENTS:
+- Format EXACTLY as: "Step N: Action. Agent: AgentName. Tool: tool_name. Parameters: {{key: value}}".
+- Agent names MUST match exactly: MultimodalProcessor_Agent, Sentiment_Agent, Summarizer_Agent, Analytics_Agent.
+- ALWAYS include Parameters field for Summarizer and Analytics with objective_context.
+- NO dependencies (sequential execution handles this automatically).
+- Step 1 MUST be MultimodalProcessor_Agent and process ALL files in ONE step.
 
+EXAMPLES:
 Example 1 - SEC Document Analysis:
 Step 1: Process uploaded files to extract content using appropriate Azure services (Speech-to-Text for audio, Document Intelligence for PDF). Agent: MultimodalProcessor_Agent. Tool: process_files
 Step 2: Create {summary_type} {persona} summary covering all objective requirements (risk factors, financial metrics, strategic insights). Agent: Summarizer_Agent. Tool: summarize. Parameters: {{summary_type: {summary_type}, persona: {persona}, objective_context: <full_objective>}}
@@ -488,185 +434,107 @@ Step 3: Create {summary_type} {persona} summary combining insights from both aud
 Step 4: Extract insights, patterns, and recommendations from combined content. Agent: Analytics_Agent. Tool: analyze. Parameters: {{analysis_focus: [strategic_insights, recommendations], objective_context: <full_objective>}}
 
 USER PREFERENCES:
-- Summary Type: {summary_type} (use this for all Summarizer_Agent steps)
-- Persona: {persona} (use this for all Summarizer_Agent steps)
+- Summary Type: {summary_type} (use this for all Summarizer_Agent steps).
+- Persona: {persona} (use this for all Summarizer_Agent steps).
+"""
 
-RULES:
-- NO meta-planning, headers, or separators - ONLY numbered action steps
-- Be specific about what each step does
-- Include ALL required parameters
-- Use exact agent and tool names
-- Step 1 MUST process ALL files in ONE step
+        return rules
 
-OUTPUT FORMAT - Return ONLY the numbered steps:
-Step 1: [Action]. Agent: agent_name. Tool: tool_name
-Step 2: [Action]. Agent: agent_name. Tool: tool_name. Parameters: {{param: value}}
-..."""
-
-        logger.info("Creating plan using planning agent", objective_length=len(objective))
-        
-        # Call the planning agent directly to generate the plan
-        # The agent's process() method returns the LLM response as a string
-        try:
-            plan_text = await self.planning_agent.process(
-                message=planning_task,
-                context={}
-            )
-            
-            logger.info(
-                "Plan generation completed",
-                content_length=len(plan_text) if plan_text else 0,
-                preview=plan_text[:200] if plan_text else ""
-            )
-            
-        except Exception as e:
-            logger.error("Failed to create plan with planning agent", error=str(e))
-            raise
-        
-        if not plan_text or len(plan_text.strip()) == 0:
-            raise ValueError("Plan generation returned empty response")
-        
-        # Parse the plan from the LLM response
-        steps_plan = await self._parse_multimodal_plan(plan_text, objective, files_info)
-        
-        logger.info(
-            "Parsed plan from LLM",
-            steps_count=len(steps_plan),
-            step_agents=[s.get("agent") for s in steps_plan]
-        )
-        
-        return steps_plan
-    
-    async def _parse_multimodal_plan(
+    def _convert_plan_steps(
         self,
-        plan_text: str,
+        plan_steps: List[PlanStep],
+        files_info: List[Dict[str, str]],
         objective: str,
-        files_info: List[Dict[str, str]]
     ) -> List[Dict[str, Any]]:
-        """
-        Parse LLM plan text into step dictionaries.
-        
-        Expected format:
-        Step 1: Action. Agent: AgentName. Tool: tool_name. Parameters: {key: value}
-        """
-        import re
-        import ast
-        
-        # Extract plan content (look for FINAL ANSWER or use full text)
-        if "FINAL ANSWER:" in plan_text.upper():
-            plan_content = plan_text.split("FINAL ANSWER:")[-1].strip()
-        else:
-            plan_content = plan_text
-        
-        logger.info("Parsing plan content", preview=plan_content[:300])
-        
-        # Parse steps line by line
-        step_lines = [line.strip() for line in plan_content.split('\n') if line.strip().startswith('Step')]
-        
-        logger.info(f"Found {len(step_lines)} step lines", preview=step_lines[:2] if step_lines else [])
-        
-        steps_plan = []
-        
-        for line in step_lines:
-            try:
-                # Pattern: "Step N: Action. Agent: agent. Tool: tool. Parameters: {params}"
-                # Parameters is optional
-                pattern = r'Step\s+\d+:\s*(.+?)\.\s*Agent:\s*(\w+)\.\s*Tool:\s*([^\.\s]+)(?:\.\s*Parameters:\s*\{([^\}]+)\})?'
-                match = re.search(pattern, line, re.IGNORECASE)
-                
-                if match:
-                    action = match.group(1).strip()
-                    agent = match.group(2).strip()
-                    tool = match.group(3).strip()
-                    params_str = match.group(4)  # Can be None
-                    
-                    # Parse parameters if present
-                    parameters = {}
-                    if params_str:
-                        # Try to parse as dict-like string
-                        try:
-                            # Clean up the params string and convert to valid dict
-                            params_cleaned = "{" + params_str + "}"
-                            # Replace single quotes with double quotes for JSON parsing
-                            params_cleaned = params_cleaned.replace("'", '"')
-                            # Try to eval as Python dict (safer than JSON for lists)
-                            parameters = ast.literal_eval(params_cleaned.replace('"', "'"))
-                        except:
-                            logger.warning(f"Could not parse parameters", params_str=params_str)
-                    
-                    # Ensure objective_context is set if not present and agent needs it
-                    if agent in ["Summarizer_Agent", "Analytics_Agent"]:
-                        if "objective_context" not in parameters:
-                            parameters["objective_context"] = objective
-                    
-                    # Map agent names to AgentType enum values
-                    agent_map = {
-                        "MultimodalProcessor_Agent": AgentType.MULTIMODAL_PROCESSOR.value,
-                        "Sentiment_Agent": AgentType.SENTIMENT.value,
-                        "Summarizer_Agent": AgentType.SUMMARIZER.value,
-                        "Analytics_Agent": AgentType.ANALYTICS.value
-                    }
-                    
-                    agent_value = agent_map.get(agent)
-                    if not agent_value:
-                        logger.warning(f"Unknown agent name: {agent}, skipping step")
-                        continue
-                    
-                    # Build step dictionary
-                    step_dict = {
-                        "action": action,
-                        "agent": agent_value,
-                        "file_ids": [f["file_id"] for f in files_info] if agent == "MultimodalProcessor_Agent" else [],
-                        "parameters": parameters
-                    }
-                    
-                    steps_plan.append(step_dict)
-                    
-                    logger.info(
-                        f"Parsed step successfully",
-                        action=action[:50],
-                        agent=agent_value,
-                        tool=tool,
-                        has_params=bool(parameters)
-                    )
-                else:
-                    logger.warning(f"Could not parse step line", line=line[:100])
-                    
-            except Exception as e:
-                logger.error(f"Error parsing step line", error=str(e), line=line[:100])
-        
-        # Fallback: if no steps parsed, create default plan
-        if not steps_plan and files_info:
-            logger.warning("No steps parsed from LLM, creating default plan")
-            steps_plan = [
+        """Convert `PlanStep` objects into the persistence-friendly structure."""
+
+        if not plan_steps:
+            return []
+
+        agent_map = {
+            "MultimodalProcessor_Agent": AgentType.MULTIMODAL_PROCESSOR.value,
+            "Sentiment_Agent": AgentType.SENTIMENT.value,
+            "Summarizer_Agent": AgentType.SUMMARIZER.value,
+            "Analytics_Agent": AgentType.ANALYTICS.value,
+        }
+        file_ids = [f.get("file_id") for f in files_info if f.get("file_id")]
+
+        steps_plan: List[Dict[str, Any]] = []
+        for step in plan_steps:
+            agent_value = agent_map.get(step.agent)
+            if not agent_value:
+                logger.warning("Skipping step with unknown agent", agent=step.agent)
+                continue
+
+            parameters = dict(step.parameters or {})
+            step_file_ids = parameters.pop("file_ids", [])
+
+            if agent_value == AgentType.MULTIMODAL_PROCESSOR.value:
+                step_file_ids = step_file_ids or file_ids
+
+            if agent_value in (AgentType.SUMMARIZER.value, AgentType.ANALYTICS.value):
+                parameters.setdefault("objective_context", objective)
+
+            steps_plan.append(
                 {
-                    "action": f"Process {len(files_info)} uploaded file(s) to extract content",
-                    "agent": AgentType.MULTIMODAL_PROCESSOR.value,
-                    "file_ids": [f["file_id"] for f in files_info],
-                    "parameters": {}
-                },
-                {
-                    "action": "Create comprehensive summary",
-                    "agent": AgentType.SUMMARIZER.value,
-                    "file_ids": [],
-                    "parameters": {
-                        "summary_type": "comprehensive",
-                        "persona": "executive",
-                        "objective_context": objective
-                    }
-                },
-                {
-                    "action": "Perform analytics and extract insights",
-                    "agent": AgentType.ANALYTICS.value,
-                    "file_ids": [],
-                    "parameters": {
-                        "analysis_focus": ["general"],
-                        "objective_context": objective
-                    }
+                    "action": step.action,
+                    "agent": agent_value,
+                    "file_ids": step_file_ids,
+                    "parameters": parameters,
                 }
-            ]
-        
+            )
+
+            logger.info(
+                "Converted plan step",
+                agent=agent_value,
+                includes_params=bool(parameters),
+                file_ids=len(step_file_ids),
+            )
+
         return steps_plan
+
+    def _build_default_plan(
+        self,
+        *,
+        files_info: List[Dict[str, str]],
+        objective: str,
+        summary_type: str,
+        persona: str,
+    ) -> List[Dict[str, Any]]:
+        """Fallback plan when the planner cannot provide valid steps."""
+
+        if not files_info:
+            return []
+
+        file_ids = [f.get("file_id") for f in files_info if f.get("file_id")]
+
+        return [
+            {
+                "action": f"Process {len(file_ids)} uploaded file(s) to extract content",
+                "agent": AgentType.MULTIMODAL_PROCESSOR.value,
+                "file_ids": file_ids,
+                "parameters": {},
+            },
+            {
+                "action": "Create comprehensive summary",
+                "agent": AgentType.SUMMARIZER.value,
+                "file_ids": [],
+                "parameters": {
+                    "summary_type": summary_type,
+                    "persona": persona,
+                    "objective_context": objective,
+                },
+            },
+            {
+                "action": "Perform analytics and extract insights",
+                "agent": AgentType.ANALYTICS.value,
+                "file_ids": [],
+                "parameters": {
+                    "analysis_focus": ["general"],
+                    "objective_context": objective,
+                },
+            },
+        ]
     
     async def execute_plan(self, plan_id: str, session_id: str):
         """

@@ -38,8 +38,9 @@ def get_authenticated_user_details(request_headers):
     if "x-ms-client-principal-id" not in raw_headers:
         logger.info("No user principal found in headers - using mock user for local dev")
         # Local development mode - use sample user
-        from . import sample_user
-        raw_user_object = sample_user.sample_user
+        from .sample_user import get_sample_user
+
+        raw_user_object = get_sample_user()
     else:
         # Production mode - extract from EasyAuth headers
         raw_user_object = raw_headers

@@ -3,6 +3,50 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Circle, XCircle, Loader2, Clock, ChevronRight } from 'lucide-react';
 import { api, ExecutionStep } from '../lib/api';
 import { formatDistanceToNow } from 'date-fns';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
+
+const markdownClassName = 'prose prose-invert prose-sm text-slate-300 max-w-none';
+
+const markdownComponents: Components = {
+  a: (props: any) => (
+    <a
+      {...props}
+      className="text-primary-300 underline"
+      target="_blank"
+      rel="noopener noreferrer"
+    />
+  ),
+  code: ({ inline, className, children, ...props }: any) => {
+    if (inline) {
+      return (
+        <code className="px-1 py-0.5 bg-slate-700 rounded text-primary-200" {...props}>
+          {children}
+        </code>
+      );
+    }
+
+    return (
+      <pre className="bg-slate-900 text-xs p-3 rounded overflow-auto">
+        <code className={className} {...props}>
+          {children}
+        </code>
+      </pre>
+    );
+  },
+  table: ({ className, ...props }: any) => (
+    <div className="overflow-auto">
+      <table className={`min-w-full border-collapse ${className ?? ''}`} {...props} />
+    </div>
+  ),
+  th: ({ className, ...props }: any) => (
+    <th className={`border border-slate-600 px-3 py-2 bg-slate-700 ${className ?? ''}`} {...props} />
+  ),
+  td: ({ className, ...props }: any) => (
+    <td className={`border border-slate-700 px-3 py-2 ${className ?? ''}`} {...props} />
+  ),
+};
 
 interface ExecutionMonitorProps {
   runId: string;
@@ -102,7 +146,13 @@ export default function ExecutionMonitor({ runId, selectedAgentProp, onAgentSele
                     {formatDistanceToNow(new Date(msg.timestamp), { addSuffix: true })}
                   </span>
                 </div>
-                <p className="text-sm text-slate-300">{msg.content}</p>
+                <ReactMarkdown
+                  className={`${markdownClassName} [&>*]:mb-2 last:[&>*]:mb-0`}
+                  remarkPlugins={[remarkGfm]}
+                  components={markdownComponents}
+                >
+                  {msg.content}
+                </ReactMarkdown>
               </div>
             ))}
           </div>
@@ -289,10 +339,14 @@ function AgentDetailView({ execution, agentName, onBack }: AgentDetailViewProps)
       {agentMessage && (
         <div className="bg-slate-800 rounded-lg p-6 border border-slate-700">
           <h3 className="text-xl font-bold mb-4">Analysis Output</h3>
-          <div className="prose prose-invert max-w-none">
-            <div className="text-slate-300 whitespace-pre-wrap font-mono text-sm bg-slate-900 p-4 rounded overflow-auto max-h-[600px]">
+          <div className="bg-slate-900 p-4 rounded overflow-auto max-h-[600px]">
+            <ReactMarkdown
+              className={`${markdownClassName} leading-relaxed`}
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
               {agentMessage.content}
-            </div>
+            </ReactMarkdown>
           </div>
           <div className="mt-4 text-xs text-slate-400">
             Generated {formatDistanceToNow(new Date(agentMessage.timestamp), { addSuffix: true })}

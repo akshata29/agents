@@ -4,10 +4,10 @@ Backend API for multi-agent financial research with dynamic planning and approva
 
 ## Architecture
 
-This implementation uses the **Foundation Framework** for orchestration:
+This implementation uses the **Microsoft Agent Framework (MAF)** via the local `app.maf` integration layer:
 
-- **DynamicPlanner** - Creates execution plans using ReAct pattern
-- **GroupChatPattern** - Executes approved steps via multi-agent collaboration  
+- **MAFDynamicPlanner** - Creates execution plans using ReAct-style prompts
+- **MAFOrchestrator** - Executes approved steps via multi-agent collaboration  
 - **CosmosDB** - Persists plans, steps, and conversation history
 - **Human-in-the-Loop** - Approval workflow for each plan step
 
@@ -15,7 +15,7 @@ This implementation uses the **Foundation Framework** for orchestration:
 
 ✅ **Dynamic Plan Generation** - AI creates structured plans from natural language objectives
 ✅ **Approval Workflow** - Human approval required before executing each step
-✅ **Framework Integration** - Uses existing patterns (no duplication!)
+✅ **MAF Integration** - Uses `app.maf` wrappers over Microsoft Agent Framework (no duplication!)
 ✅ **CosmosDB Persistence** - Session-partitioned storage for plans and messages
 ✅ **Microsoft Agent Framework** - Leverages MAF for agent execution
 
@@ -31,7 +31,7 @@ backend/
 │   │   ├── memory_store_base.py   # Abstract interface
 │   │   └── cosmos_memory.py       # CosmosDB implementation
 │   ├── services/
-│   │   └── task_orchestrator.py   # Bridge framework ↔ Cosmos
+│   │   └── task_orchestrator.py   # Bridge MAF workflows ↔ Cosmos
 │   ├── routers/
 │   │   └── orchestration.py       # API endpoints
 │   └── infra/
@@ -53,7 +53,7 @@ python -m venv venv
 # Install packages
 pip install -r requirements.txt
 
-# Install Framework (from parent directory)
+# Install Microsoft Agent Framework (from parent directory)
 cd ..\..\framework
 pip install -e .
 cd ..\finagent_dynamic_app\backend
@@ -139,9 +139,9 @@ POST /api/input_task
 }
 ```
 
-### 2. Framework Creates Plan
-- **TaskOrchestrator** calls **DynamicPlanner.create_plan()**
-- Planner uses ReAct pattern to generate 3-6 steps
+### 2. MAF Planner Creates Plan
+- **TaskOrchestrator** calls **MAFDynamicPlanner.generate_plan()**
+- Planner uses the ReAct-style planning rules to generate 3-6 steps
 - Steps stored in CosmosDB with status = `pending`
 
 ### 3. User Reviews and Approves Steps
@@ -153,8 +153,8 @@ POST /api/approve_step
 }
 ```
 
-### 4. Framework Executes Approved Step
-- **TaskOrchestrator** calls **GroupChatPattern.execute()**
+### 4. MAF Orchestrator Executes Approved Step
+- **TaskOrchestrator** calls **MAFOrchestrator.run_sequential()** (or `run_concurrent()` when needed)
 - Appropriate agent executes the step
 - Results stored as **AgentMessage** in Cosmos
 - Step status updated to `completed`
@@ -203,16 +203,16 @@ POST /api/approve_step
 }
 ```
 
-## Framework Integration
+## MAF Integration
 
-This app **uses** the Framework, it doesn't duplicate it:
+This app **uses** Microsoft Agent Framework through our lightweight `app.maf` layer; we don't duplicate core orchestration primitives:
 
-| Component | Framework Module | Usage |
-|-----------|-----------------|-------|
-| Plan Creation | `framework.core.planning.DynamicPlanner` | `await planner.create_plan()` |
-| Step Execution | `framework.patterns.GroupChatPattern` | `await orchestrator.execute()` |
-| Agent Registry | `framework.core.registry.AgentRegistry` | Already integrated |
-| Observability | `framework.core.observability` | Already integrated |
+| Component | MAF Module | Usage |
+|-----------|------------|-------|
+| Plan Creation | `app.maf.MAFDynamicPlanner` | `await planner.generate_plan()` |
+| Step Execution | `app.maf.MAFOrchestrator` | `await orchestrator.run_sequential()` |
+| Agent Registry | `app.maf.MAFAgentFactory` | Already integrated |
+| Observability | `app.infra.telemetry.TelemetryService` | Already integrated |
 
 ## CosmosDB Schema
 
@@ -261,29 +261,29 @@ See main [GETTING_STARTED.md](../GETTING_STARTED.md) for deployment instructions
 - Set `COSMOSDB_ENDPOINT` in .env file
 - Verify endpoint URL format: `https://<account>.documents.azure.com:443/`
 
-### "Framework module not found"
-- Install framework: `cd ../../framework && pip install -e .`
-- Verify Python path includes framework directory
+### "agent_framework module not found"
+- Install the local MAF package: `cd ../../framework && pip install -e .`
+- Verify Python path includes the repository root (so `agent_framework` is discoverable)
 
 ### "Agent not found"
 - Check agent name matches registered agents
-- Verify framework orchestrator is initialized
+- Verify the MAF orchestrator is initialized
 
 ## Architecture Decisions
 
 ### Why No BaseAgent Class?
-Framework already provides `framework.agents.base.BaseAgent` - we use that.
+Microsoft Agent Framework already provides `agent_framework.BaseAgent` - we use that.
 
 ### Why No AgentFactory Class?
-Framework already provides `framework.agents.factory.AgentFactory` - we use that.
+Our `app.maf.MAFAgentFactory` wraps the native MAF `ChatAgent`, so no additional factory layer is needed.
 
 ### Why No Custom Planner?
-Framework already provides `framework.core.planning.DynamicPlanner` with ReAct pattern - we use that.
+`app.maf.MAFDynamicPlanner` builds on the Microsoft Agent Framework planning utilities, so we reuse it instead of reinventing planning logic.
 
 ### What Did We Build?
 1. **Data Models** - Our specific Plan/Step/Message schemas
 2. **Cosmos Persistence** - Storage layer for our models
-3. **TaskOrchestrator** - Bridge between framework patterns and our Cosmos storage
+3. **TaskOrchestrator** - Bridge between MAF workflows and our Cosmos storage
 4. **API Endpoints** - REST API exposing the workflow
 
-**Result**: ~500 lines of code instead of ~2000+ by using the framework!
+**Result**: ~500 lines of code instead of ~2000+ by leaning on Microsoft Agent Framework!

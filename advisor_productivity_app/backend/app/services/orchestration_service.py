@@ -12,18 +12,13 @@ import asyncio
 import json
 from datetime import datetime
 import structlog
-import sys
-from pathlib import Path
 
-# Add framework to path
-repo_root = Path(__file__).parent.parent.parent.parent.parent
-if str(repo_root) not in sys.path:
-    sys.path.insert(0, str(repo_root))
-
-# Framework imports
-from framework.core.orchestrator import MagenticOrchestrator
-from framework.core.registry import AgentRegistry, AgentMetadata, AgentCapability as RegistryCapability
-from framework.config.settings import Settings as FrameworkSettings
+from ..maf import (
+    MagenticOrchestrator,
+    AgentMetadata,
+    AgentCapability as RegistryCapability,
+    FrameworkSettings,
+)
 
 from ..agents.speech_transcription_agent import SpeechTranscriptionAgent
 from ..agents.sentiment_agent import InvestmentSentimentAgent

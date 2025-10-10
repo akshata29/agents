@@ -34,6 +34,26 @@ class Settings(BaseSettings):
         default="FinAgent Research Bot contact@example.com",
         alias="SEC_USER_AGENT"
     )
+
+    @property
+    def AZURE_OPENAI_ENDPOINT(self) -> str:
+        """Uppercase alias for Azure OpenAI endpoint used by MAF helpers."""
+        return self.azure_openai_endpoint
+
+    @property
+    def AZURE_OPENAI_API_KEY(self) -> str:
+        """Uppercase alias for Azure OpenAI key used by MAF helpers."""
+        return self.azure_openai_api_key
+
+    @property
+    def AZURE_OPENAI_DEPLOYMENT(self) -> str:
+        """Uppercase alias for Azure OpenAI deployment name."""
+        return self.azure_openai_deployment
+
+    @property
+    def AZURE_OPENAI_API_VERSION(self) -> str:
+        """Uppercase alias for Azure OpenAI API version."""
+        return self.azure_openai_api_version
     
     # Azure Storage
     azure_storage_connection_string: Optional[str] = Field(

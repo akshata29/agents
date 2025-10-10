@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import structlog
 import asyncio
 
-from framework.mcp_integration.maf_adapter import MAFMCPAdapter, ExternalMCPServer
+from ..maf import MAFMCPAdapter, ExternalMCPServer
 
 logger = structlog.get_logger(__name__)
 

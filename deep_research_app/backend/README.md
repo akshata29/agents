@@ -1,6 +1,6 @@
 # Deep Research Backend API
 
-FastAPI backend for the Deep Research application, built on the Foundation Framework.
+FastAPI backend for the Deep Research application.
 
 ## Features
 

@@ -11,7 +11,11 @@ from pathlib import Path
 
 from ..models.file_models import DocumentSource, ResearchContext, FileMetadata
 from ..services.file_handler import FileHandler
-from ..services.tavily_search_service import TavilySearchService, Source
+from ..services.tavily_search_service import (
+    TavilySearchService,
+    Source,
+    ensure_sources_dict,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -97,7 +101,7 @@ class DocumentResearchService:
         for doc_id in selected_document_ids:
             doc_source = await self._get_document_source(doc_id, query)
             if doc_source:
-                document_sources.extend(doc_source["sources"])
+                document_sources.extend(ensure_sources_dict(doc_source["sources"]))
                 document_context_parts.append(doc_source["context"])
         
         # Perform web search
@@ -110,12 +114,12 @@ class DocumentResearchService:
         # Convert web sources to dictionary format
         web_sources = [
             {
-                "title": source.title,
-                "content": source.content,
-                "url": source.url,
-                "source_type": "web"
+                "title": normalized.get("title", ""),
+                "content": normalized.get("content", ""),
+                "url": normalized.get("url", ""),
+                "source_type": normalized.get("source_type", "web")
             }
-            for source in web_search_result.get("sources", [])
+            for normalized in ensure_sources_dict(web_search_result.get("sources", []))
         ]
         
         # Combine contexts

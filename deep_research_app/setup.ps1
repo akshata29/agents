@@ -50,25 +50,6 @@ Write-Host "✓ Found: npm $NpmVersion" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "==================================" -ForegroundColor Cyan
-Write-Host "Step 1: Framework Setup" -ForegroundColor Cyan
-Write-Host "==================================" -ForegroundColor Cyan
-
-# Install framework
-Write-Host "Installing Foundation Framework..." -ForegroundColor Yellow
-Push-Location $FrameworkDir
-try {
-    python -m pip install -e . --quiet
-    Write-Host "✓ Framework installed successfully" -ForegroundColor Green
-} catch {
-    Write-Host "ERROR: Failed to install framework" -ForegroundColor Red
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    Pop-Location
-    exit 1
-}
-Pop-Location
-
-Write-Host ""
-Write-Host "==================================" -ForegroundColor Cyan
 Write-Host "Step 2: Backend Setup" -ForegroundColor Cyan
 Write-Host "==================================" -ForegroundColor Cyan
 

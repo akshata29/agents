@@ -70,6 +70,7 @@ class ResearchRun(BaseModel):
     workflow_engine: Optional[str] = None  # Workflow engine type
     workflow_graph: Optional[Dict[str, Any]] = None  # For MAF workflow
     task_results: Dict[str, Any] = Field(default_factory=dict)  # Results from each task
+    result_sections: Optional[Dict[str, Any]] = None  # Canonical research outputs (plan, report, etc.)
     execution_details: Optional[Dict[str, Any]] = None  # Complete execution monitor details (tasks, outputs, timeline)
     
     # Error handling

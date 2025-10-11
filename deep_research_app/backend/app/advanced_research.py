@@ -14,6 +14,8 @@ from typing import List, Dict, Any, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
+from .services.tavily_search_service import ensure_source_dict
+
 logger = structlog.get_logger(__name__)
 
 
@@ -83,8 +85,9 @@ def assess_source_quality(source: Any) -> SourceQualityAssessment:
     Returns:
         SourceQualityAssessment with tier and score
     """
-    url = source.url if hasattr(source, 'url') else source.get('url', '')
-    title = source.title if hasattr(source, 'title') else source.get('title', '')
+    normalized = ensure_source_dict(source)
+    url = normalized.get('url', '')
+    title = normalized.get('title', '')
     
     url_lower = url.lower()
     title_lower = title.lower()
@@ -477,13 +480,14 @@ CLAIM 2: ...
     logger.info("  Claims extracted for verification")
     
     # Step 2: Verify claims (simplified - in production would do actual verification searches)
+    academic_sources = [s for s in sources if 'edu' in ensure_source_dict(s).get('url', '').lower()]
     verification_prompt = f"""Review these extracted claims against the original sources and assess verification status.
 
 Claims:
 {extracted_claims}
 
 Original Source Count: {len(sources)}
-Source Quality: {len([s for s in sources if 'edu' in (s.url if hasattr(s, 'url') else s.get('url', ''))])} academic, {len(sources) - len([s for s in sources if 'edu' in (s.url if hasattr(s, 'url') else s.get('url', ''))])} other
+Source Quality: {len(academic_sources)} academic, {len(sources) - len(academic_sources)} other
 
 For each claim, provide:
 VERIFICATION_STATUS: [Verified/Partially Verified/Unverified]

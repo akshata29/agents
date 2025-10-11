@@ -1,7 +1,7 @@
 """
 Deep Research Backend API
 
-FastAPI backend for the Deep Research application using Foundation Framework.
+FastAPI backend for the Deep Research application using MAF.
 Provides REST and WebSocket endpoints for workflow execution, monitoring, and real-time updates.
 """
 
@@ -12,7 +12,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Optional, AsyncIterable
+from typing import Dict, Any, List, Optional, AsyncIterable, Sequence, Set
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, Request, Body
@@ -36,15 +36,17 @@ framework_parent = Path(__file__).parent.parent.parent.parent
 if str(framework_parent) not in sys.path:
     sys.path.insert(0, str(framework_parent))
 
-# Now import from framework package
-from framework.workflows.engine import WorkflowEngine, WorkflowStatus, TaskStatus
-from framework.core.orchestrator import MagenticOrchestrator
-from framework.core.registry import AgentRegistry
-from framework.core.observability import ObservabilityService
-from framework.mcp_integration.client import MCPClient
-from framework.config.settings import Settings
-from framework.patterns.sequential import SequentialPattern
-from framework.patterns.concurrent import ConcurrentPattern
+# Now import from local MAF utilities
+from app.maf import (
+    WorkflowEngine,
+    WorkflowStatus,
+    TaskStatus,
+    MagenticOrchestrator,
+    AgentRegistry,
+    ObservabilityService,
+    MCPClient,
+    Settings,
+)
 
 # Import our advanced services
 from app.services.advanced_prompting_service import AdvancedPromptingService
@@ -60,7 +62,11 @@ from openai import AzureOpenAI
 from tavily import TavilyClient
 
 # Import services
-from .services.tavily_search_service import TavilySearchService, Source
+from .services.tavily_search_service import (
+    TavilySearchService,
+    Source,
+    ensure_sources_dict,
+)
 from .services.export_service import ExportService, get_export_service
 from .services.file_handler import FileHandler
 from .services.document_intelligence_service import DocumentIntelligenceService
@@ -84,7 +90,6 @@ from .advanced_research import (
     analyze_research_gaps, multi_perspective_analysis,
     fact_check_claims, SourceTier, PerspectiveRole
 )
-
 # Import routers
 from app.routers import sessions
 from app.routers import files as files_router
@@ -106,54 +111,85 @@ doc_research_service: Optional[DocumentResearchService] = None
 
 # Helper function to prepare document context
 async def prepare_document_context(document_ids: List[str]) -> Optional[Dict[str, Any]]:
-    """
-    Prepare document context for research from selected document IDs.
-    
-    Args:
-        document_ids: List of document IDs to include
-        
-    Returns:
-        Dictionary with document_context and document_sources, or None if no documents
-    """
+    """Prepare document context for research from selected document IDs."""
     if not document_ids or not doc_research_service:
         return None
-    
+
     try:
-        logger.info(f"Preparing document context", document_count=len(document_ids))
-        
+        logger.info("Preparing document context", document_count=len(document_ids))
+
         # Get document statistics
         stats = await doc_research_service.get_document_stats(document_ids)
-        
+
         # Retrieve all document content
-        document_sources = []
-        document_context_parts = []
-        
+        document_sources: List[Dict[str, Any]] = []
+        document_context_parts: List[str] = []
+
         for doc_id in document_ids:
             doc_source = await doc_research_service._get_document_source(doc_id, "")
             if doc_source:
-                document_sources.extend(doc_source["sources"])
+                document_sources.extend(ensure_sources_dict(doc_source["sources"]))
                 document_context_parts.append(doc_source["context"])
-        
+
         # Combine document context
         document_context = "\n\n---\n\n".join(document_context_parts) if document_context_parts else ""
-        
         logger.info(
-            f"Document context prepared",
+            "Document context prepared",
             total_documents=len(document_ids),
             total_pages=stats.get("total_pages", 0),
             total_words=stats.get("total_words", 0),
-            context_length=len(document_context)
+            context_length=len(document_context),
         )
-        
+
         return {
             "document_context": document_context,
             "document_sources": document_sources,
-            "document_stats": stats
+            "document_stats": stats,
         }
-        
+
     except Exception as e:
-        logger.error(f"Failed to prepare document context", error=str(e))
+        logger.error("Failed to prepare document context", error=str(e))
         return None
+
+
+# Serialization helpers
+def sanitize_for_json(value: Any) -> Any:
+    """Recursively convert values into JSON-serializable structures."""
+    if isinstance(value, dict):
+        cleaned: Dict[str, Any] = {}
+        for key, item in value.items():
+            if key == "raw_response":
+                continue
+            cleaned[key] = sanitize_for_json(item)
+        return cleaned
+
+    if isinstance(value, (list, tuple, set)):
+        return [sanitize_for_json(item) for item in value]
+
+    if isinstance(value, AgentRunResponse):
+        if hasattr(value, "model_dump"):
+            return sanitize_for_json(value.model_dump())
+        if hasattr(value, "dict"):
+            return sanitize_for_json(value.dict())
+        return str(value)
+
+    if isinstance(value, AgentRunResponseUpdate):
+        if hasattr(value, "model_dump"):
+            return sanitize_for_json(value.model_dump())
+        if hasattr(value, "dict"):
+            return sanitize_for_json(value.dict())
+        return str(value)
+
+    if hasattr(value, "isoformat") and callable(getattr(value, "isoformat")):
+        try:
+            return value.isoformat()
+        except Exception:
+            return str(value)
+
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+
+    return str(value)
 
 
 # Custom Agent Classes
@@ -608,16 +644,14 @@ async def execute_research_programmatically(
     document_context_data: Optional[Dict[str, Any]] = None,
     model_deployment: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Execute research using programmatic code-based approach with framework patterns.
-    
-    This demonstrates proper usage of the Foundation Framework patterns:
-    - SequentialPattern for ordered agent execution
-    - ConcurrentPattern for parallel agent execution
-    - Pattern composition for hybrid workflows
-    
+    """Execute research using programmatic orchestration with native MAF builders.
+
+    This implementation now relies on the local ``app.maf`` orchestrator to
+    orchestrate sequential and concurrent phases without the legacy shim classes.
+
     Args:
-        document_context_data: Optional document context with document_context, document_sources, and document_stats
+        document_context_data: Optional document context with document_context,
+            document_sources, and document_stats
     """
     results = {}
     
@@ -699,43 +733,41 @@ async def execute_research_programmatically(
         researcher_instructions = DEPTH_PROMPTS[depth]["researcher"]
         writer_instructions = DEPTH_PROMPTS[depth]["writer"]
         
-        # Import patterns from framework
-        from framework.patterns import SequentialPattern, ConcurrentPattern
-        
-        # Phase 1: Sequential Planning using SequentialPattern
-        logger.info("Code-based execution: Phase 1 - Sequential Planning with SequentialPattern")
+        # Leverage local MAF patterns
+        # Phase 1: Sequential Planning using sequential workflow
+        logger.info("Code-based execution: Phase 1 - Sequential Planning (sequential workflow)")
         logger.info("sequential_task_start", phase=1, task="planning", agent="planner")
-        
+
         # Update progress: Phase 1 starting
         if execution_id in active_executions:
             active_executions[execution_id]["current_task"] = f"Phase 1: Research Planning ({depth} mode)"
             active_executions[execution_id]["progress"] = 10.0
             active_executions[execution_id]["completed_tasks"] = []
-        
-        # Use SequentialPattern for planning phase
-        planning_pattern = SequentialPattern(
-            agents=["planner"],
-            name="research_planning",
-            description=f"Create {depth_config['detail_level']} research plan",
-            config={"preserve_context": True}
-        )
-        
+
         # Use depth-specific planning prompt
         planner_prompt = planner_prompt_template.format(topic=topic)
         planner_prompt += f"\n\nTarget: {depth_config['detail_level']} analysis"
         planner_prompt += f"\nMax sources: {max_sources}"
         planner_prompt += f"\nReport length: {depth_config['report_min_words']}-{depth_config['report_max_words']} words"
-        
+
         planning_context = await orchestrator_instance.execute(
             task=planner_prompt,
-            pattern=planning_pattern
+            pattern="sequential",
+            agents=["planner"],
+            metadata={
+                "name": "research_planning",
+                "description": f"Create {depth_config['detail_level']} research plan",
+                "config": {"preserve_context": True},
+            },
         )
-        
+
         # Extract research plan with better error handling
         research_plan = ""
         if planning_context and planning_context.result:
-            logger.info(f"Planning context result structure: {planning_context.result.keys() if isinstance(planning_context.result, dict) else type(planning_context.result)}")
-            
+            logger.info(
+                f"Planning context result structure: {planning_context.result.keys() if isinstance(planning_context.result, dict) else type(planning_context.result)}"
+            )
+
             # Try summary field first (it contains the complete response)
             if "summary" in planning_context.result:
                 research_plan = planning_context.result.get("summary", "")
@@ -748,20 +780,24 @@ async def execute_research_programmatically(
             # Try direct content field
             elif "content" in planning_context.result:
                 research_plan = planning_context.result.get("content", "")
-            
+
             if not research_plan:
-                logger.warning(f"⚠️ No research plan content found. Full result keys: {planning_context.result.keys()}")
+                logger.warning(
+                    f"⚠️ No research plan content found. Full result keys: {planning_context.result.keys()}"
+                )
         else:
-            logger.warning(f"⚠️ Planning context or result is None")
-        
+            logger.warning("⚠️ Planning context or result is None")
+
         results["research_plan"] = research_plan
-        logger.info("sequential_task_completed", phase=1, task="planning", result_length=len(str(research_plan)))
-        
+        logger.info(
+            "sequential_task_completed", phase=1, task="planning", result_length=len(str(research_plan))
+        )
+
         # Update progress: Phase 1 complete
         if execution_id in active_executions:
             active_executions[execution_id]["current_task"] = "Phase 2: Concurrent Investigation"
-            active_executions[execution_id]["progress"] = 20.0
-            active_executions[execution_id]["completed_tasks"] = ["Phase 1: Research Planning"]
+            active_executions[execution_id]["progress"] = 35.0
+            active_executions[execution_id]["completed_tasks"].append("Phase 1: Planning")
         
         # Phase 2: Multi-Query Research Execution (Deep Research Pattern)
         logger.info("Code-based execution: Phase 2 - Multi-Query Deep Research")
@@ -1001,8 +1037,8 @@ Focus on factual information, metrics, and specific details.
                 f"Phase 2: Deep Research ({total_sources_count} sources: {len(all_web_sources)} web + {len(document_sources)} documents)"
             ]
         
-        # Phase 3-6: Sequential Processing using SequentialPattern
-        logger.info("Code-based execution: Phase 3-6 - Sequential Processing with SequentialPattern")
+        # Phase 3-6: Sequential Processing using sequential workflow
+        logger.info("Code-based execution: Phase 3-6 - Sequential Processing (sequential workflow)")
         logger.info("sequential_task_start", phase=3, task="synthesis_validation_finalization", agents=["writer", "reviewer", "summarizer"])
         
         # Build comprehensive context for remaining phases with depth-specific instructions
@@ -1213,24 +1249,18 @@ Return the SUMMARY OF FINDINGS, not an evaluation of report quality."""
         logger.info(f"📤 Sending context to agents with {len(unique_sources)} sources in Sources section")
         logger.info(f"📊 Context length: {len(comprehensive_context)} characters")
         
-        # Use SequentialPattern for the remaining workflow
-        # Note: Microsoft Agent Framework doesn't allow duplicate agent instances
-        # So we use: writer → reviewer → summarizer (removed duplicate writer)
-        logger.info("🔄 Creating SequentialPattern with agents: writer → reviewer → summarizer")
-        
-        final_phases_pattern = SequentialPattern(
-            agents=["writer", "reviewer", "summarizer"],
-            name="synthesis_validation_finalization",
-            description=f"Sequential synthesis ({depth} depth), validation, and summarization",
-            config={"preserve_context": True, "fail_fast": False}
-        )
-        
-        logger.info("🚀 Executing SequentialPattern...")
+        logger.info("🚀 Executing sequential synthesis pipeline (writer → reviewer → summarizer)...")
         final_context = await orchestrator_instance.execute(
             task=comprehensive_context,
-            pattern=final_phases_pattern
+            pattern="sequential",
+            agents=["writer", "reviewer", "summarizer"],
+            metadata={
+                "name": "synthesis_validation_finalization",
+                "description": f"Sequential synthesis ({depth} depth), validation, and summarization",
+                "config": {"preserve_context": True, "fail_fast": False},
+            },
         )
-        logger.info("✅ SequentialPattern execution completed")
+        logger.info("✅ Sequential execution completed")
         
         # Extract results from sequential execution with better error handling
         if final_context and final_context.result:
@@ -1299,9 +1329,9 @@ Return the SUMMARY OF FINDINGS, not an evaluation of report quality."""
             active_executions[execution_id]["current_task"] = None
             active_executions[execution_id]["progress"] = 90.0
             active_executions[execution_id]["completed_tasks"] = [
-                "Phase 1: Research Planning (SequentialPattern)",
+                "Phase 1: Research Planning (sequential)",
                 f"Phase 2: Multi-Query Deep Research ({len(unique_sources)} unique sources)",
-                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)"
+                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (sequential)"
             ]
         
         # ============================================================
@@ -1631,9 +1661,9 @@ Provide an improved version that maintains accuracy while addressing validation 
             
             # Update completed tasks based on what was actually run
             completed_tasks = [
-                "Phase 1: Research Planning (SequentialPattern)",
+                "Phase 1: Research Planning (sequential)",
                 f"Phase 2: Multi-Query Deep Research ({len(unique_sources)} unique sources)",
-                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)"
+                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (sequential)"
             ]
             
             if "refinement_iterations" in results:
@@ -2353,18 +2383,46 @@ async def get_execution_status(execution_id: str):
             
             # Build result from stored data
             result = None
-            if status == "completed" and run.metadata:
-                # Reconstruct result from metadata
+            if status == "completed":
+                task_results = run.result_sections or run.task_results or {}
+                metadata_source = run.metadata or {}
+
+                logger.info(
+                    "Rehydrating historical execution",
+                    execution_id=execution_id,
+                    task_result_keys=list(task_results.keys()) if isinstance(task_results, dict) else type(task_results).__name__,
+                    metadata_keys=list(metadata_source.keys()) if isinstance(metadata_source, dict) else type(metadata_source).__name__
+                )
+
+                def pick_value(key: str) -> Any:
+                    if isinstance(task_results, dict) and task_results.get(key):
+                        return task_results.get(key)
+                    if isinstance(metadata_source, dict):
+                        return metadata_source.get(key)
+                    return None
+
                 result = {
-                    "research_plan": run.metadata.get("research_plan", ""),
-                    "core_concepts": run.metadata.get("core_concepts", ""),
-                    "current_state": run.metadata.get("current_state", ""),
-                    "applications": run.metadata.get("applications", ""),
-                    "challenges": run.metadata.get("challenges", ""),
-                    "future_trends": run.metadata.get("future_trends", ""),
-                    "final_report": run.research_report or "",
-                    "executive_summary": run.summary or ""
+                    "research_plan": pick_value("research_plan") or "",
+                    "core_concepts": pick_value("core_concepts") or "",
+                    "current_state": pick_value("current_state") or "",
+                    "applications": pick_value("applications") or "",
+                    "challenges": pick_value("challenges") or "",
+                    "future_trends": pick_value("future_trends") or "",
+                    "final_report": run.research_report
+                        or pick_value("final_report")
+                        or pick_value("report")
+                        or "",
+                    "executive_summary": run.summary
+                        or pick_value("executive_summary")
+                        or pick_value("summary")
+                        or "",
+                    "validation_results": pick_value("validation_results") or "",
                 }
+
+                # Remove empty entries to avoid frontend fallback rendering
+                result = {k: v for k, v in result.items() if v}
+                if not result:
+                    result = None
             
             # Get error if failed
             error = run.error_message
@@ -2968,39 +3026,180 @@ async def save_execution_to_cosmos(execution_id: str, status: str, results: Dict
         
         # Add execution details if provided (from workflow mode)
         if execution_details:
-            update_data["execution_details"] = execution_details
+            update_data["execution_details"] = sanitize_for_json(execution_details)
         
         # Extract and save results
+        metadata_fields = [
+            "research_plan",
+            "core_concepts",
+            "current_state",
+            "applications",
+            "challenges",
+            "future_trends",
+            "draft_report",
+            "validation_results",
+        ]
+
         if results:
-            # Save final report
-            if "final_report" in results:
-                update_data["research_report"] = results.get("final_report")
-            elif "report" in results:
-                update_data["research_report"] = results.get("report")
-            
-            # Save executive summary
-            if "executive_summary" in results:
-                update_data["executive_summary"] = results.get("executive_summary")
-            elif "summary" in results:
-                update_data["executive_summary"] = results.get("summary")
-            
-            # Save research plan
-            if "research_plan" in results:
-                update_data["research_plan"] = results.get("research_plan")
-            
-            # Merge results with existing metadata from exec_info
-            existing_metadata = exec_info.get("metadata", {})
-            update_data["metadata"] = {**existing_metadata, **results}
-            
-            # Also save orchestration pattern and framework info at top level
-            if existing_metadata:
-                update_data["orchestration_pattern"] = existing_metadata.get("orchestration_pattern")
-                update_data["framework"] = existing_metadata.get("framework")
-                update_data["workflow_engine"] = existing_metadata.get("workflow_engine")
+            safe_results = sanitize_for_json(results)
+
+            if isinstance(safe_results, dict):
+                logger.info(
+                    "Persisting research results",
+                    execution_id=execution_id,
+                    result_keys=list(safe_results.keys()),
+                    has_nested_result="result" in safe_results,
+                    has_metadata="metadata" in safe_results
+                )
+                logger.debug(
+                    "Sanitized research results",
+                    result_keys=list(safe_results.keys()),
+                    execution_id=execution_id
+                )
+
+                def collect_candidate_dicts(root: Any) -> List[Dict[str, Any]]:
+                    candidates: List[Dict[str, Any]] = []
+                    seen: Set[int] = set()
+                    stack: List[Any] = [root]
+                    while stack:
+                        current = stack.pop()
+                        identity = id(current)
+                        if identity in seen:
+                            continue
+                        seen.add(identity)
+                        if isinstance(current, dict):
+                            candidates.append(current)
+                            for nested_value in current.values():
+                                if isinstance(nested_value, (dict, list, tuple)):
+                                    stack.append(nested_value)
+                        elif isinstance(current, (list, tuple)):
+                            for item in current:
+                                if isinstance(item, (dict, list, tuple)):
+                                    stack.append(item)
+                    return candidates
+
+                candidate_dicts = collect_candidate_dicts(safe_results)
+
+                def extract_value(*aliases: str):
+                    for candidate in candidate_dicts:
+                        for alias in aliases:
+                            if alias in candidate:
+                                value = candidate[alias]
+                                if value not in (None, "", [], {}):
+                                    return value
+                    return None
+
+                section_aliases = {
+                    "research_plan": ("research_plan", "plan"),
+                    "core_concepts": ("core_concepts",),
+                    "current_state": ("current_state",),
+                    "applications": ("applications",),
+                    "challenges": ("challenges",),
+                    "future_trends": ("future_trends",),
+                    "draft_report": ("draft_report", "draftReport"),
+                    "final_report": ("final_report", "report", "finalReport"),
+                    "executive_summary": ("executive_summary", "summary", "executiveSummary"),
+                    "validation_results": ("validation_results", "validation", "validationResults"),
+                    "citations": ("citations", "references"),
+                    "sources": ("sources", "source_list"),
+                    "sources_count": ("sources_count", "sources_analyzed", "sourcesAnalyzed", "total_sources"),
+                    "source_quality": ("source_quality", "sourceQuality"),
+                }
+
+                extracted_sections: Dict[str, Any] = {}
+                for canonical, aliases in section_aliases.items():
+                    value = extract_value(*aliases)
+                    if value not in (None, "", [], {}):
+                        extracted_sections[canonical] = value
+
+                logger.info(
+                    "Extracted canonical sections from research results",
+                    execution_id=execution_id,
+                    section_keys=list(extracted_sections.keys())
+                )
+
+                final_report = extracted_sections.get("final_report") or safe_results.get("final_report") or safe_results.get("report")
+                summary_text = extracted_sections.get("executive_summary") or safe_results.get("executive_summary") or safe_results.get("summary")
+                research_plan_value = extracted_sections.get("research_plan") or safe_results.get("research_plan")
+                citations_value = extracted_sections.get("citations") or safe_results.get("citations")
+                sources_value = extracted_sections.get("sources") or safe_results.get("sources")
+                validation_value = extracted_sections.get("validation_results") or safe_results.get("validation_results")
+                sources_count_value = extracted_sections.get("sources_count") or extract_value("sources_analyzed", "sourcesAnalyzed", "total_sources")
+
+                if final_report:
+                    update_data["research_report"] = final_report
+
+                if summary_text:
+                    update_data["summary"] = summary_text
+
+                if research_plan_value:
+                    update_data["research_plan"] = research_plan_value
+
+                if citations_value:
+                    update_data["citations"] = citations_value
+
+                if sources_count_value is not None:
+                    try:
+                        update_data["sources_analyzed"] = int(float(sources_count_value))
+                    except (TypeError, ValueError):
+                        pass
+                elif safe_results.get("sources_analyzed") is not None:
+                    update_data["sources_analyzed"] = safe_results.get("sources_analyzed")
+
+                task_results_payload = dict(safe_results)
+                for key, value in extracted_sections.items():
+                    task_results_payload.setdefault(key, value)
+                update_data["task_results"] = task_results_payload
+
+                if extracted_sections:
+                    update_data["result_sections"] = extracted_sections
+
+                # Merge selected result fields into metadata while preserving original metadata
+                existing_metadata = sanitize_for_json(exec_info.get("metadata", {}))
+                metadata_update = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
+
+                for key in metadata_fields:
+                    value = extracted_sections.get(key) or safe_results.get(key)
+                    if value:
+                        metadata_update[key] = value
+
+                if summary_text:
+                    metadata_update["executive_summary"] = summary_text
+                if final_report:
+                    metadata_update["final_report"] = final_report
+                if citations_value:
+                    metadata_update["citations"] = citations_value
+                if sources_value and isinstance(sources_value, (list, dict, str)):
+                    metadata_update["sources"] = sources_value
+                if validation_value:
+                    metadata_update["validation_results"] = validation_value
+                if extracted_sections.get("source_quality"):
+                    metadata_update["source_quality"] = extracted_sections["source_quality"]
+                if extracted_sections:
+                    metadata_update["result_sections"] = extracted_sections
+                if task_results_payload:
+                    metadata_update["raw_results"] = task_results_payload
+
+                update_data["metadata"] = metadata_update
+
+                # Also save orchestration pattern and framework info at top level (if present)
+                if metadata_update:
+                    pattern = metadata_update.get("orchestration_pattern")
+                    framework = metadata_update.get("framework")
+                    engine = metadata_update.get("workflow_engine")
+
+                    if pattern:
+                        update_data["orchestration_pattern"] = pattern
+                    if framework:
+                        update_data["framework"] = framework
+                    if engine:
+                        update_data["workflow_engine"] = engine
+            else:
+                update_data["task_results"] = safe_results
         
         # Add completed tasks from exec_info
         if "completed_tasks" in exec_info:
-            update_data["completed_tasks"] = exec_info["completed_tasks"]
+            update_data["completed_tasks"] = sanitize_for_json(exec_info["completed_tasks"])
         
         await cosmos.update_run(run_id, update_data)
         logger.info(f"✅ Saved execution to Cosmos DB successfully", run_id=run_id, status=update_data["status"])
@@ -3447,7 +3646,7 @@ async def execute_code_based_research(
             phase3_combined_output = "\n\n".join(phase3_outputs) if phase3_outputs else results.get("final_report", "")
             
             task_mapping = {
-                "Phase 1: Research Planning (SequentialPattern)": {
+                "Phase 1: Research Planning (sequential)": {
                     "agent": "planner",
                     "output": results.get("research_plan", "")
                 },
@@ -3455,7 +3654,7 @@ async def execute_code_based_research(
                     "agent": "researcher (concurrent)",
                     "output": phase2_combined_output
                 },
-                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (SequentialPattern)": {
+                "Phase 3-6: Synthesis, Validation, Finalization, Summarization (sequential)": {
                     "agent": "writer → reviewer → summarizer",
                     "output": phase3_combined_output
                 }

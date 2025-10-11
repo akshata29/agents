@@ -48,8 +48,8 @@
 └────────────────────────────┬────────────────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────────────┐
-│                           FOUNDATION FRAMEWORK                      │
-│                     (Core Orchestration Layer)                       │
+│                 LOCAL ORCHESTRATION UTILITIES (app.maf)             │
+│           (Microsoft Agent Framework helpers + workflow engine)     │
 │  ┌───────────────────────────────────────────────────────────────┐ │
 │  │  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────┐ │ │
 │  │  │ WorkflowEngine   │  │  Orchestrator    │  │   Agent     │ │ │
@@ -176,8 +176,31 @@ WebSocket Connection
     │    ├─ { type: 'status', ... }
     │    ├─ { type: 'task_update', ... }
     │    ├─ { type: 'progress', ... }
+
+    ### 3. Historical Persistence Flow
+
+    ```
+    Backend (save_execution_to_cosmos)
+         │
+         ├─ 1. Fetch execution context (run/session IDs, metadata, final variables)
+         ├─ 2. Sanitize results → removes raw SDK types, ensures JSON compatibility
+         ├─ 3. Normalize aliases → build canonical `result_sections` + `task_results`
+         ├─ 4. Backfill metadata → merge sections for backwards-compatible reads
+         ├─ 5. Upsert ResearchRun document into Cosmos DB
+         │
+    CosmosMemoryStore (Azure Cosmos DB)
+         │
+         ├─ Stores:
+         │    ├─ `research_report`, `summary`, `result_sections`
+         │    ├─ execution timeline (`execution_details`, `completed_tasks`)
+         │    └─ technical metadata (orchestration pattern, framework, engine)
+         │
+    Historical API (`/api/research/status/{id}` when inactive)
+         │
+         └─ Rehydrates canonical sections so archived runs display identical detail to live sessions
+    ```
     │    └─ { type: 'completed', ... }
-    │
+    ### 4. Component Communication Flow
     ▼
 Frontend (ExecutionMonitor.tsx)
     │
@@ -379,4 +402,4 @@ App
     └── Credits
 ```
 
-This architecture provides a **complete, scalable** foundation for building multi-agent applications with the Magentic Foundation Framework! 🚀
+This architecture provides a **complete, scalable** foundation for building multi-agent applications with lightweight Microsoft Agent Framework utilities! 🚀

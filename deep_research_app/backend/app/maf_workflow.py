@@ -37,7 +37,12 @@ from agent_framework import (
 )
 
 # Import TavilySearchService for multi-query deep research
-from .services.tavily_search_service import TavilySearchService, Source
+from .services.tavily_search_service import (
+    TavilySearchService,
+    Source,
+    ensure_source_dict,
+    ensure_sources_dict,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -365,7 +370,7 @@ Example format:
                 )
                 
                 context = search_results["context"]
-                sources = search_results["sources"]
+                sources = ensure_sources_dict(search_results["sources"])
                 
                 # Combine document context with web search context if available
                 combined_context = context
@@ -409,7 +414,7 @@ Focus on factual information, metrics, and specific details."""
             
             # Add document sources if available (only once per executor, not per query)
             if plan.document_sources:
-                area_sources.extend(plan.document_sources)
+                area_sources.extend(ensure_sources_dict(plan.document_sources))
             
             # Create findings object
             findings_obj = ResearchFindings(
@@ -421,11 +426,13 @@ Focus on factual information, metrics, and specific details."""
                 confidence=0.85  # Could be calculated based on result quality
             )
             
+            web_sources_count = sum(1 for s in area_sources if ensure_source_dict(s).get("source_type") != "document")
+            document_sources_count = sum(1 for s in area_sources if ensure_source_dict(s).get("source_type") == "document")
             logger.info(
                 f"[{self.id}] Research completed",
                 area=area,
-                web_sources=len([s for s in area_sources if isinstance(s, dict) and s.get("type") != "document"]),
-                document_sources=len(plan.document_sources) if plan.document_sources else 0
+                web_sources=web_sources_count,
+                document_sources=document_sources_count
             )
             
             await ctx.send_message(findings_obj)
@@ -486,23 +493,29 @@ Use clear sections, cite sources, and provide actionable insights."""
                 compiled_findings += f"\n\n## Research Area {idx}: {finding.area}\n"
                 compiled_findings += f"Confidence: {finding.confidence:.0%}\n\n"
                 compiled_findings += finding.findings
-                # Collect sources (they're Source objects from TavilySearchService)
-                all_sources.extend(finding.sources)
+                all_sources.extend(ensure_sources_dict(finding.sources))
             
             # Deduplicate sources by URL
-            unique_sources = []
-            seen_urls = set()
+            unique_sources: List[Dict[str, Any]] = []
+            seen_identifiers = set()
             for source in all_sources:
-                source_url = source.url if hasattr(source, 'url') else str(source)
-                if source_url and source_url not in seen_urls:
-                    unique_sources.append(source)
-                    seen_urls.add(source_url)
+                source_data = ensure_source_dict(source)
+                identifier = (
+                    source_data.get("url")
+                    or source_data.get("file_id")
+                    or source_data.get("id")
+                    or source_data.get("title")
+                    or str(source_data)
+                )
+                if identifier and identifier not in seen_identifiers:
+                    seen_identifiers.add(identifier)
+                    unique_sources.append(source_data)
             
             logger.info(f"[{self.id}] Collected {len(unique_sources)} unique sources from {len(all_sources)} total")
             
             # Format sources list
             sources_list = "\n".join([
-                f"[{idx+1}] {source.title if hasattr(source, 'title') else 'Unknown'}\n    {source.url if hasattr(source, 'url') else str(source)}"
+                f"[{idx+1}] {source.get('title') or source.get('filename', 'Unknown Source')}\n    {source.get('url') or source.get('file_path') or source.get('file_id', 'N/A')}"
                 for idx, source in enumerate(unique_sources)
             ])
             

@@ -119,7 +119,7 @@ Learn parallel execution:
 
 ## 🔗 External Resources
 
-- [Foundation Framework](../../../framework/README.md) - Core framework
+- [MAF Utilities Overview](../DEVELOPER_GUIDE.md#execution-modes) - How the three modes are wired up locally
 - [Pattern Reference](../../../docs/framework/pattern-reference.md) - All 7 orchestration patterns
 - [Microsoft Agent Framework](https://microsoft.github.io/autogen/) - MAF documentation
 - [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
@@ -170,6 +170,6 @@ Learn parallel execution:
 ---
 
 **Last Updated:** October 2025  
-**Maintained By:** Foundation Framework Team
+**Maintained By:** Deep Research Engineering Team
 
 > Clean, focused documentation for professional developers.

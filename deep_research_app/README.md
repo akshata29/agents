@@ -1,8 +1,8 @@
 # Deep Research Application
 
-> A deep research application showcasing three execution modes built on the **Foundation Framework**.
+> A deep research application showcasing three execution modes powered by lightweight **Microsoft Agent Framework (MAF)** utilities.
 
-[![Framework](https://img.shields.io/badge/Framework-Magentic%20v1.0-blue.svg)](../../framework/)
+[![Orchestration](https://img.shields.io/badge/Orchestration-MAF%20%2B%20Custom-blue.svg)](./docs/DEVELOPER_GUIDE.md#execution-modes)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI-green.svg)](./backend/)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20TypeScript-cyan.svg)](./frontend/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -65,6 +65,15 @@ Each mode implements the same research workflow: **Planning → Parallel Researc
 </td>
 </tr>
 </table>
+
+### Persistent Research History
+
+Regardless of the execution mode you choose, every run is now stored in Azure Cosmos DB with a **canonical set of research sections**. The backend sanitizes each agent response, normalizes keys (plan, core concepts, final report, executive summary, citations, validation, etc.), and saves them in both `result_sections` and `task_results`. Historical replays pull from the same structure, so previously completed runs render identical detail to live executions.
+
+- ✅ Sanitized storage that strips non-serializable artifacts (raw SDK objects, datetimes, etc.)
+- ✅ Automatic alias mapping (`report` → `final_report`, `summary` → `executive_summary`, ...)
+- ✅ Backwards-compatible metadata that mirrors the sections expected by the UI
+- ✅ Workflow engine now records final variable state, guaranteeing YAML runs persist the same rich outputs as code-based executions
 
 ### Real-Time Monitoring
 
@@ -646,14 +655,14 @@ npm run build
 
 ### Adding New Agents
 
-1. Define agent in `framework/agents/`
-2. Register in `framework/core/registry.py`
-3. Add to workflow YAML
-4. Update frontend types if needed
+1. Create a subclass of `agent_framework.BaseAgent` (e.g., in `backend/app/agents/`)
+2. Register it inside `setup_research_agents` within `backend/app/main.py`
+3. Wire the agent into the workflow (YAML tasks or programmatic orchestration)
+4. Update frontend types if the response schema changes
 
 ### Modifying Workflow
 
-1. Edit `framework/examples/workflows/deep_research.yaml`
+1. Edit `workflows/deep_research.yaml`
 2. Add/modify tasks and dependencies
 3. Update variables as needed
 4. Restart backend
@@ -671,9 +680,9 @@ npm run build
 
 **Import Errors**
 ```bash
-# Ensure framework is installed
-cd framework
-pip install -e .
+# Ensure backend deps are installed
+cd backend
+pip install -r requirements.txt
 ```
 
 **API Not Starting**
@@ -751,7 +760,7 @@ After exploring the application, consider:
 
 ## 📖 Related Resources
 
-- [Foundation Framework](../../framework/README.md) - Core framework documentation
+- [MAF Utilities Overview](./docs/DEVELOPER_GUIDE.md#execution-modes) - How each mode is orchestrated in this repo
 - [Pattern Reference](../../docs/framework/pattern-reference.md) - All 7 orchestration patterns
 - [Microsoft Agent Framework](https://microsoft.github.io/autogen/) - Upstream MAF documentation
 - [FastAPI](https://fastapi.tiangolo.com/) - Backend framework
@@ -773,7 +782,7 @@ Contributions are welcome! This application demonstrates best practices for:
 
 ## 📄 License
 
-MIT License - Part of the Foundation Framework
+MIT License
 
 ---
 
@@ -784,10 +793,10 @@ For questions or issues:
 1. **Documentation** - Check docs/ folder for detailed guides
 2. **Examples** - Review code in backend/app/ and frontend/src/
 3. **Issues** - Open a GitHub issue with details
-4. **Framework** - See [framework/README.md](../../framework/README.md)
+4. **Orchestration Utilities** - Read [`backend/app/maf/`](./backend/app/maf/) for implementation details
 
 ---
 
-**Built with ❤️ using the Foundation Framework**
+**Built with ❤️ on lightweight MAF orchestration utilities**
 
 > Demonstrating the power of flexible multi-agent orchestration with three distinct execution modes: YAML, Code-Based, and MAF Workflows.

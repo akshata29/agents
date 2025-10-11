@@ -1,6 +1,6 @@
 # Deep Research Frontend
 
-Professional React + TypeScript frontend for the Deep Research application, showcasing the Foundation Framework.
+Professional React + TypeScript frontend for the Deep Research application, showcasing the MAF.
 
 ## Features
 

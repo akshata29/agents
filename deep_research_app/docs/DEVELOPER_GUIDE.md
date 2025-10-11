@@ -32,6 +32,19 @@ The application supports three distinct execution modes, each with different tra
 
 ---
 
+## 🗄️ Persistence & Data Model
+
+Every execution—regardless of mode—persists to Azure Cosmos DB through `CosmosMemoryStore` using a consistent `ResearchRun` shape. The backend now performs the following steps automatically when saving a run:
+
+1. **Serialization Guard Rails** – `sanitize_for_json` strips raw SDK objects (e.g. `AgentRunResponse`, datetime instances) while preserving markdown content and nested dictionaries.
+2. **Alias Normalization** – Common variations (`report`, `finalReport`, `summary`, `executiveSummary`, etc.) are mapped to canonical keys in `result_sections` and mirrored in `task_results`.
+3. **Metadata Backfill** – Key sections are copied into the stored `metadata` payload for backwards compatibility with historical consumers.
+4. **Workflow Variable Snapshot** – The workflow engine captures its final `variables` before completion, ensuring YAML workflows expose the same rich results as code-based runs.
+
+> 🔎 **Tip:** When you introduce a new output section, update the alias map in `save_execution_to_cosmos` so historical runs and the UI both “just work.”
+
+---
+
 ### Mode 1: YAML Workflows (Declarative)
 
 **When to use:**
@@ -631,20 +644,24 @@ researchers = [
 ### Adding a New Agent
 
 ```python
-# 1. Define agent in framework/agents/
-from framework.agents.base import Agent
+# 1. Define agent under backend/app/agents/
+from agent_framework import BaseAgent, AgentRunResponse, ChatMessage, Role, TextContent
 
-class CustomAgent(Agent):
-    async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        # Implementation
-        result = await self.process(task)
-        return {"result": result}
 
-# 2. Register agent
-from framework.core.registry import AgentRegistry
+class CustomAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(name="custom_agent", description="Domain specific helper")
+
+    async def run(self, messages=None, **kwargs):
+        reply = ChatMessage(role=Role.ASSISTANT, contents=[TextContent(text="Hello from custom agent!")])
+        return AgentRunResponse(messages=[reply])
+
+
+# 2. Register agent with the local registry
+from app.maf import AgentRegistry
 
 registry = AgentRegistry()
-registry.register_agent("custom_agent", CustomAgent)
+await registry.register_agent("custom_agent", CustomAgent())
 
 # 3. Use in workflow
 # YAML:
@@ -655,6 +672,7 @@ tasks:
 
 # Code:
 result = await orchestrator.execute_sequential(
+    task="Run custom agent",
     agent_ids=["custom_agent"],
     context={"task": "..."}
 )

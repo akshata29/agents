@@ -7,7 +7,12 @@ and images for research queries.
 
 import aiohttp
 import structlog
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Iterable
+
+
+def _strip_private_keys(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a shallow copy without private keys."""
+    return {k: v for k, v in data.items() if not k.startswith("_")}
 
 logger = structlog.get_logger(__name__)
 
@@ -16,17 +21,114 @@ class Source:
     """Represents a text search result source"""
     
     def __init__(self, title: str, content: str, url: str):
-        self.title = title
-        self.content = content
-        self.url = url
+        self._data: Dict[str, Any] = {
+            "title": title,
+            "content": content,
+            "url": url,
+            "source_type": "web"
+        }
+
+    @property
+    def title(self) -> str:
+        return self._data["title"]
+
+    @title.setter
+    def title(self, value: str) -> None:
+        self._data["title"] = value
+
+    @property
+    def content(self) -> str:
+        return self._data["content"]
+
+    @content.setter
+    def content(self, value: str) -> None:
+        self._data["content"] = value
+
+    @property
+    def url(self) -> str:
+        return self._data["url"]
+
+    @url.setter
+    def url(self, value: str) -> None:
+        self._data["url"] = value
+
+    @property
+    def source_type(self) -> str:
+        return self._data["source_type"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Return a serializable representation."""
+        return dict(self._data)
+
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
+        return self._data.get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def items(self):
+        return self._data.items()
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"Source(title={self.title!r}, url={self.url!r})"
 
 
 class ImageSource:
     """Represents an image search result"""
     
     def __init__(self, url: str, description: Optional[str] = None):
-        self.url = url
-        self.description = description
+        self._data: Dict[str, Any] = {
+            "url": url,
+            "description": description,
+            "source_type": "image"
+        }
+
+    @property
+    def url(self) -> str:
+        return self._data["url"]
+
+    @url.setter
+    def url(self, value: str) -> None:
+        self._data["url"] = value
+
+    @property
+    def description(self) -> Optional[str]:
+        return self._data["description"]
+
+    @description.setter
+    def description(self, value: Optional[str]) -> None:
+        self._data["description"] = value
+
+    @property
+    def source_type(self) -> str:
+        return self._data["source_type"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return dict(self._data)
+
+    def get(self, key: str, default: Optional[Any] = None) -> Any:
+        return self._data.get(key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def items(self):
+        return self._data.items()
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"ImageSource(url={self.url!r})"
 
 
 class TavilySearchService:
@@ -301,3 +403,57 @@ class TavilySearchService:
             "images": search_results["images"],
             "sources_count": len(search_results["sources"])
         }
+
+
+def ensure_source_dict(source: Any) -> Dict[str, Any]:
+    """Normalize a source-like object into a dictionary."""
+    if isinstance(source, Source):
+        return source.to_dict()
+
+    if isinstance(source, ImageSource):
+        return source.to_dict()
+
+    if isinstance(source, dict):
+        return dict(source)
+
+    # Support Pydantic/BaseModel style objects
+    if hasattr(source, "model_dump"):
+        try:
+            dumped = source.model_dump()
+            dumped = dict(dumped)  # type: ignore[arg-type]
+        except TypeError:
+            dumped = dict(getattr(source, "dict")())  # type: ignore[call-arg]
+        dumped = _strip_private_keys(dumped)
+        if "source_type" not in dumped:
+            if "file_id" in dumped:
+                dumped["source_type"] = dumped.get("source_type", "document")
+        if "title" not in dumped and "filename" in dumped:
+            dumped["title"] = dumped["filename"]
+        if "url" not in dumped and "file_path" in dumped:
+            dumped["url"] = dumped["file_path"]
+        return dumped
+
+    if hasattr(source, "dict") and callable(getattr(source, "dict")):
+        dumped = dict(source.dict())  # type: ignore[attr-defined]
+        dumped = _strip_private_keys(dumped)
+        if "title" not in dumped and "filename" in dumped:
+            dumped["title"] = dumped["filename"]
+        return dumped
+
+    if hasattr(source, "__dict__"):
+        raw = _strip_private_keys(dict(vars(source)))
+        raw.setdefault("title", raw.get("filename", "Unknown Source"))
+        return raw
+
+    # Fallback to basic representation
+    return {
+        "title": getattr(source, "title", "Unknown Source"),
+        "content": getattr(source, "content", ""),
+        "url": getattr(source, "url", ""),
+        "source_type": getattr(source, "source_type", "unknown")
+    }
+
+
+def ensure_sources_dict(sources: Iterable[Any]) -> List[Dict[str, Any]]:
+    """Normalize a collection of source-like objects into dictionaries."""
+    return [ensure_source_dict(source) for source in sources]

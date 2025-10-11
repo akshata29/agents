@@ -1,0 +1,1 @@
+pwsh .\deploy.ps1 -ResourceGroup astdnapublic -AcrName astdnapublicacr -AppServicePlanName finagentsasp -WebAppName astdnamafadp -BackendPublicUrl https://astdnamafadp.azurewebsites.net

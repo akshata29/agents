@@ -1,6 +1,7 @@
 import type { FC } from 'react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Mic, MicOff } from 'lucide-react'
+import { resolveBackendUrl } from '../utils/backendUrl'
 
 interface AudioRecorderProps {
   sessionId: string
@@ -14,7 +15,6 @@ const AudioRecorder: FC<AudioRecorderProps> = ({
   onRecordingChange
 }) => {
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null)
-  const [audioWorkletNode, setAudioWorkletNode] = useState<AudioWorkletNode | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
   // Effect to stop recording when parent sets isRecording to false
@@ -23,6 +23,11 @@ const AudioRecorder: FC<AudioRecorderProps> = ({
       stopRecording()
     }
   }, [isRecording])
+
+  const backendUploadUrl = useMemo(() => {
+    const baseUrl = resolveBackendUrl()
+    return `${baseUrl.replace(/\/$/, '')}/transcription/upload`
+  }, [])
 
   const startRecording = async () => {
     try {
@@ -71,7 +76,7 @@ const AudioRecorder: FC<AudioRecorderProps> = ({
         formData.append('session_id', sessionId)
 
         try {
-          await fetch('http://localhost:8000/transcription/upload', {
+          await fetch(backendUploadUrl, {
             method: 'POST',
             body: formData
           })
@@ -108,8 +113,6 @@ const AudioRecorder: FC<AudioRecorderProps> = ({
       })
       streamRef.current = null
     }
-    
-    setAudioWorkletNode(null)
     
     // Only update parent if currently recording
     if (isRecording) {

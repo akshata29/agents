@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Deploy Advisor Productivity App to Azure App Service as Docker container
+    Deploy Patterns App to Azure App Service as Docker container
     
 .DESCRIPTION
     This script:
@@ -21,7 +21,7 @@
     Azure App Service Plan name (will be created if doesn't exist)
     
 .PARAMETER WebAppName
-    Azure Web App name (optional, defaults to app-advisor-productivity-{rg})
+    Azure Web App name (optional, defaults to app-patterns-{rg})
     
 .PARAMETER Location
     Azure region (default: eastus)
@@ -48,9 +48,6 @@ param(
     
     [Parameter(Mandatory=$false)]
     [string]$WebAppName,
-    
-    [Parameter(Mandatory=$false)]
-    [string]$BackendPublicUrl,
     
     [Parameter(Mandatory=$false)]
     [string]$Location = "eastus",
@@ -120,7 +117,7 @@ function Read-EnvFile {
 
 try {
     Write-Info "========================================="
-    Write-Info "Advisor Productivity App - Azure Deployment"
+    Write-Info "Patterns App - Azure Deployment"
     Write-Info "========================================="
     Write-Info ""
     Write-Info "Resource Group: $ResourceGroup"
@@ -131,16 +128,11 @@ try {
     
     # Set default Web App name if not provided
     if ([string]::IsNullOrWhiteSpace($WebAppName)) {
-        $WebAppName = "app-advisor-productivity-$($ResourceGroup.ToLower())"
+        $WebAppName = "app-patterns-$($ResourceGroup.ToLower())"
         Write-Info "Web App Name (auto-generated): $WebAppName"
     }
     
-    if ([string]::IsNullOrWhiteSpace($BackendPublicUrl)) {
-        $BackendPublicUrl = "https://$WebAppName.azurewebsites.net"
-        Write-Info "Backend public URL (auto-derived): $BackendPublicUrl"
-    }
-    
-    $ImageName = "advisor-productivity-app:latest"
+    $ImageName = "patterns-app:latest"
     $EnvFilePath = Join-Path $PSScriptRoot "backend\.env"
     
     # Check if logged into Azure
@@ -227,11 +219,7 @@ try {
         Push-Location $parentDir
         
         try {
-            docker build `
-                --build-arg BACKEND_URL=$BackendPublicUrl `
-                -t $ImageName `
-                -f advisor_productivity_app/Dockerfile `
-                .
+            docker build -t $ImageName -f patterns/Dockerfile .
             if ($LASTEXITCODE -ne 0) {
                 throw "Docker build failed"
             }
@@ -325,31 +313,12 @@ try {
     
     # Update CORS origins to include the web app URL
     $webAppUrl = "https://$WebAppName.azurewebsites.net"
-    $frontendOrigin = $BackendPublicUrl
-    try {
-        $frontendUri = [System.Uri]::new($BackendPublicUrl)
-        $frontendOrigin = $frontendUri.GetLeftPart([System.UriPartial]::Authority)
-    }
-    catch {
-        Write-Warning "Unable to parse BackendPublicUrl '$BackendPublicUrl' into an origin; using raw value."
-    }
     $corsKey = if ($envVars.ContainsKey("CORS_ORIGINS")) { "CORS_ORIGINS" } else { $null }
     
     if ($corsKey) {
         $existingCors = $envVars[$corsKey]
-        $originsToEnsure = @($webAppUrl, $frontendOrigin)
-        $newCors = $existingCors
-        foreach ($origin in $originsToEnsure) {
-            if ($newCors -notmatch [regex]::Escape($origin)) {
-                if (-not [string]::IsNullOrWhiteSpace($newCors)) {
-                    $newCors = "$newCors,$origin"
-                }
-                else {
-                    $newCors = $origin
-                }
-            }
-        }
-        if ($newCors -ne $existingCors) {
+        if ($existingCors -notmatch $webAppUrl) {
+            $newCors = "$existingCors,$webAppUrl"
             $appSettings = $appSettings | Where-Object { $_ -notmatch "^CORS_ORIGINS=" }
             $appSettings += "CORS_ORIGINS=$newCors"
         }

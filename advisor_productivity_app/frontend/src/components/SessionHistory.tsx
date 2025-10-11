@@ -1,9 +1,10 @@
 import type { FC } from 'react'
 import { useState, useEffect } from 'react'
+import { resolveBackendUrl } from '../utils/backendUrl'
 import { History, Calendar, Clock, TrendingUp, User, ChevronRight, Loader2 } from 'lucide-react'
 import type { HistoricalSession } from '../types'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = resolveBackendUrl()
 
 interface SessionHistoryProps {
   onLoadSession: (sessionId: string) => void

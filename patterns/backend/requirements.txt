@@ -3,6 +3,11 @@
 agent-framework
 agent-framework-azure-ai
 
+azure-identity
+azure-ai-documentintelligence  # Document Intelligence SDK
+azure-storage-blob
+azure-cosmos
+
 # Azure dependencies  
 azure-identity
 azure-ai-inference

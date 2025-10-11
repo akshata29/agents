@@ -7,7 +7,7 @@ the Microsoft Agent Framework patterns.
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 import asyncio
@@ -34,6 +34,40 @@ logger = logging.getLogger(__name__)
 # Load environment variables from .env file
 load_dotenv()
 logger.info("Environment variables loaded")
+
+
+def _resolve_frontend_dist_path() -> Optional[Path]:
+    """Attempt to locate the built frontend assets directory."""
+    candidates: List[Path] = []
+
+    env_path = os.getenv("FRONTEND_DIST_PATH")
+    if env_path:
+        candidates.append(Path(env_path))
+
+    current_path = Path(__file__).resolve()
+    lineage = [current_path.parent, *current_path.parents]
+    for parent in lineage:
+        candidates.append(parent / "frontend" / "dist")
+        candidates.append(parent / "static")
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.exists():
+            return resolved
+
+    return None
+
+
+FRONTEND_DIST_DIR = _resolve_frontend_dist_path()
+if FRONTEND_DIST_DIR:
+    logger.info("Serving patterns frontend from %s", FRONTEND_DIST_DIR)
+else:
+    logger.warning("Patterns frontend dist directory not found; falling back to API-only responses")
 
 # Import authentication
 from auth.auth_utils import get_authenticated_user_details
@@ -229,6 +263,12 @@ app = FastAPI(
     description="REST API for Microsoft Agent Framework Orchestration Patterns",
     version="1.0.0"
 )
+
+SERVICE_STATUS_PAYLOAD = {
+    "name": "Agent Patterns API",
+    "version": "1.0.0",
+    "status": "running"
+}
 
 # Initialize CosmosDB memory store
 cosmos_store: Optional[CosmosMemoryStore] = None
@@ -577,10 +617,20 @@ The proposed approach balances innovation with pragmatic implementation, ensurin
     
     return outputs.get(agent_name, f"{agent_name} has successfully processed the task: {task_summary}. Analysis complete and ready for next phase.")
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root():
-    """Health check endpoint."""
-    return {"message": "Agent Patterns API is running"}
+    """Serve the single-page application shell or fall back to API status."""
+    if FRONTEND_DIST_DIR:
+        index_file = FRONTEND_DIST_DIR / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+    return SERVICE_STATUS_PAYLOAD
+
+
+@app.get("/api/status")
+async def api_status():
+    """API status endpoint for health probes."""
+    return SERVICE_STATUS_PAYLOAD
 
 @app.get("/patterns", response_model=List[PatternInfo])
 async def get_patterns():
@@ -794,10 +844,47 @@ async def get_system_status():
         model=deployment_name or "Not configured"
     )
 
+# Register /api-prefixed aliases so the SPA can continue using the Vite proxy path
+def _register_api_alias(path: str, endpoint, methods: list[str]) -> None:
+    app.add_api_route(
+        f"/api{path}",
+        endpoint,
+        methods=methods,
+        include_in_schema=False
+    )
+
+
+_register_api_alias("/patterns", get_patterns, ["GET"])
+_register_api_alias("/patterns/history", get_execution_history, ["GET"])
+_register_api_alias("/patterns/history/cosmos", get_cosmos_history, ["GET"])
+_register_api_alias("/patterns/sessions/cosmos", get_cosmos_sessions, ["GET"])
+_register_api_alias("/patterns/{pattern_name}", get_pattern_details, ["GET"])
+_register_api_alias("/patterns/execute", execute_pattern, ["POST"])
+_register_api_alias("/patterns/status/{execution_id}", get_execution_status, ["GET"])
+_register_api_alias("/patterns/cancel/{execution_id}", cancel_execution, ["POST"])
+_register_api_alias("/system/status", get_system_status, ["GET"])
+
 # Serve frontend static files (for production)
-frontend_path = Path(__file__).parent.parent / "frontend" / "dist"
-if frontend_path.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
+if FRONTEND_DIST_DIR:
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """Serve built frontend assets with SPA fallback for client-side routing."""
+        safe_root = FRONTEND_DIST_DIR.resolve()
+        target_path = (safe_root / full_path).resolve()
+
+        try:
+            target_path.relative_to(safe_root)
+        except ValueError:
+            return SERVICE_STATUS_PAYLOAD
+
+        if target_path.is_file():
+            return FileResponse(target_path)
+
+        index_file = safe_root / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+
+        return SERVICE_STATUS_PAYLOAD
 
 if __name__ == "__main__":
     import uvicorn

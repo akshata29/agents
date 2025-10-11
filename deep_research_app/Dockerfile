@@ -45,9 +45,6 @@ RUN apt-get update && apt-get install -y \
 COPY --from=backend-builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=backend-builder /usr/local/bin /usr/local/bin
 
-# Copy framework directory structure (we're using it as a local package, not building it yet)
-COPY framework/ /app/framework/
-
 # Add framework to Python path
 ENV PYTHONPATH="/app:${PYTHONPATH}"
 

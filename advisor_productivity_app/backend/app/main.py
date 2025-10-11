@@ -4,11 +4,15 @@ Advisor Productivity App - FastAPI Backend
 Main application entry point with API routes and middleware.
 """
 
+import os
 import structlog
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Optional
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.infra.settings import get_settings
 from app.routers import transcription, sentiment, recommendations
@@ -33,6 +37,40 @@ structlog.configure(
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _resolve_frontend_dist_path() -> Optional[Path]:
+    """Locate the built frontend assets directory for SPA hosting."""
+    candidates = []
+
+    env_path = os.getenv("FRONTEND_DIST_PATH")
+    if env_path:
+        candidates.append(Path(env_path))
+
+    current_path = Path(__file__).resolve()
+    lineage = [current_path.parent, *current_path.parents]
+    for parent in lineage:
+        candidates.append(parent / "frontend" / "dist")
+        candidates.append(parent / "static")
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve(strict=False)
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.exists():
+            return resolved
+
+    return None
+
+
+FRONTEND_DIST_DIR = _resolve_frontend_dist_path()
+if FRONTEND_DIST_DIR:
+    logger.info("Serving built frontend", path=str(FRONTEND_DIST_DIR))
+else:
+    logger.warning("Frontend dist directory not found; defaulting to API-only responses")
 
 
 
@@ -82,6 +120,12 @@ app = FastAPI(
 # Get settings
 settings = get_settings()
 
+SERVICE_STATUS_PAYLOAD = {
+    "name": "Advisor Productivity API",
+    "version": "0.1.0",
+    "status": "running"
+}
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -96,14 +140,20 @@ app.add_middleware(
 # Health Check Endpoints
 # ============================================================================
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root():
-    """Root endpoint."""
-    return {
-        "name": "Advisor Productivity API",
-        "version": "0.1.0",
-        "status": "running"
-    }
+    """Serve the SPA shell or fall back to service status."""
+    if FRONTEND_DIST_DIR:
+        index_file = FRONTEND_DIST_DIR / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+    return SERVICE_STATUS_PAYLOAD
+
+
+@app.get("/api/status")
+async def api_status():
+    """Public API status endpoint providing service metadata."""
+    return SERVICE_STATUS_PAYLOAD
 
 
 @app.get("/health")
@@ -171,6 +221,21 @@ async def global_exception_handler(request, exc):
             "message": str(exc)
         }
     )
+
+
+if FRONTEND_DIST_DIR:
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_single_page_app(full_path: str):
+        """Serve static assets or fall back to the SPA index for client routes."""
+        target_path = FRONTEND_DIST_DIR / full_path
+        if target_path.is_file():
+            return FileResponse(target_path)
+
+        index_file = FRONTEND_DIST_DIR / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+
+        return JSONResponse(SERVICE_STATUS_PAYLOAD)
 
 
 # ============================================================================

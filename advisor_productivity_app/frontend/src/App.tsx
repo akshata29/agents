@@ -10,9 +10,10 @@ import SummaryPanel from './components/SummaryPanel'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import SessionControls from './components/SessionControls'
 import SessionHistory from './components/SessionHistory'
-import type { SessionData, ViewMode, TranscriptSegment } from './types'
+import type { SessionData, ViewMode } from './types'
+import { resolveBackendUrl } from './utils/backendUrl'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = resolveBackendUrl()
 
 function App() {
   const [sessionId] = useState<string>(() => `session_${Date.now()}`)

@@ -1,5 +1,5 @@
 import type { FC } from 'react'
-import { Activity, TrendingUp } from 'lucide-react'
+import { Activity } from 'lucide-react'
 import type { SentimentData } from '../types'
 
 interface SentimentGaugeProps {
@@ -105,14 +105,22 @@ const SentimentGauge: FC<SentimentGaugeProps> = ({ sentiment }) => {
       )}
 
       {/* Risk Tolerance */}
-      {riskTolerance !== 'unknown' && (
-        <div className="mb-4">
-          <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-            <span className="text-sm font-medium text-slate-300">Risk Tolerance</span>
-            <span className="text-base font-bold capitalize text-white">{riskTolerance}</span>
-          </div>
-        </div>
-      )}
+          {riskTolerance !== 'unknown' && (
+            <div className="mb-4 space-y-3">
+              <div className="flex items-center justify-between p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <span className="text-sm font-medium text-slate-300">Risk Tolerance</span>
+                <span className="text-base font-bold capitalize text-white">{riskTolerance}</span>
+              </div>
+              {riskScore > 0 && (
+                <div className="w-full bg-slate-700 rounded-full h-2.5 shadow-inner">
+                  <div
+                    className="bg-gradient-to-r from-primary-500 to-primary-400 h-2.5 rounded-full transition-all duration-500 shadow-sm"
+                    style={{ width: `${riskScore}%` }}
+                  ></div>
+                </div>
+              )}
+            </div>
+          )}
 
       {/* Compliance Risk - only show if available */}
       {sentiment.compliance_risk_score !== undefined && (

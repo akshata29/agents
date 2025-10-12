@@ -1,116 +1,91 @@
-# Foundation Framework Documentation
+# Microsoft Agent Framework Application Suite
 
 ## Overview
 
-The Foundation Framework is an enterprise-grade, orchestration framework built on top of Microsoft Agent Framework. It provides advanced multi-agent coordination, execution patterns, security controls, and monitoring capabilities for building sophisticated AI applications.
+This documentation describes the portfolio of reference applications that we have built on top of the Microsoft Agent Framework (MAF). Each solution demonstrates a different orchestration pattern, user experience, and deployment approach that can be reused when assembling your own MAF-powered product.
 
-## Documentation Structure
+## Portfolio at a Glance
 
-### Framework Documentation
-- **[Architecture Overview](./framework/architecture.md)** - System architecture and design principles
-- **[Pattern Reference](./framework/pattern-reference.md)** - Complete guide to all 7 orchestration patterns with financial services use cases
-- **[Core Components](./framework/core-components.md)** - Registry, Orchestrator, Security, Observability
-- **[Microsoft Agent Framework Integration](./framework/msft-agent-framework.md)** - How we leverage and extend MAF
-- **[MCP Integration](./framework/mcp-integration.md)** - Model Context Protocol support
-- **[Workflow Engine](./framework/workflow-engine.md)** - YAML-based declarative workflows
-- **[API Reference](./framework/api-reference.md)** - Complete API documentation
+### Deep Research App
+- Multi-stage research workflows that mix sequential, concurrent, and hand-off execution modes
+- Research persistence, artifact storage, and YAML-driven workflow definitions
+- End-to-end example of integrating MAF planners, agents, and tool adapters
+- Quick links: [README](../deep_research_app/README.md), [Backend](../deep_research_app/backend/), [Frontend](../deep_research_app/frontend/), [Quickstart](../deep_research_app/docs/QUICKSTART.md)
 
-### Developer Guides
-- **[Getting Started](./guides/getting-started.md)** - Quick start guide
-- **[Building Custom Agents](./guides/custom-agents.md)** - Creating MAF-compliant agents
-- **[Implementing Patterns](./guides/implementing-patterns.md)** - Using orchestration patterns
-- **[YAML Workflows](./guides/yaml-workflows.md)** - Declarative workflow authoring
-- **[Security & Compliance](./guides/security.md)** - Security best practices
-- **[Production Deployment](./guides/deployment.md)** - Deployment strategies
+![Deep Research UI](../deep_research_app/docs/images/homepage.png)
 
-### Reference Application
-- **[Deep Research App Overview](./reference-app/overview.md)** - Application architecture
-- **[Pattern Implementation](./reference-app/patterns.md)** - How patterns are used
-- **[Backend Implementation](./reference-app/backend.md)** - FastAPI backend details
-- **[Frontend Implementation](./reference-app/frontend.md)** - React frontend details
-- **[Dual Execution Modes](./reference-app/execution-modes.md)** - YAML vs Code-based
-- **[Building Your Own](./reference-app/building-your-own.md)** - Step-by-step guide
+### Multimodal Insights App
+- Multimodal analysis that blends image, document, and structured data interpretation
+- Task history with replayable runs and OpenTelemetry-based diagnostics
+- Demonstrates MCP-enabled enrichment for Vision and Retrieval workflows
+- Quick links: [README](../multimodal_insights_app/README.md), [Backend](../multimodal_insights_app/backend/), [Frontend](../multimodal_insights_app/frontend/), [Architecture](../multimodal_insights_app/docs/ARCHITECTURE.md)
 
-## Quick Links
+![Multimodal Insights UI](../multimodal_insights_app/docs/images/homepage.png)
 
-- [Installation & Setup](./guides/getting-started.md#installation)
-- [Framework Architecture](./framework/architecture.md)
-- [Pattern Examples](./framework/patterns.md#examples)
-- [Deep Research App Tutorial](./reference-app/building-your-own.md)
+### Advisor Productivity App
+- Conversation intelligence for financial advisors with transcription, sentiment, and recommendation agents
+- Cosmos DB backed persistence and human-in-the-loop validation flows
+- Real-time WebSocket orchestration pattern showcasing streaming signals
+- Quick links: [README](../advisor_productivity_app/README.md), [Backend](../advisor_productivity_app/backend/), [Frontend](../advisor_productivity_app/frontend/)
 
-## Key Features
+### FinAgent App
+- Equity research copilot that applies sequential, concurrent, and group-chat coordination patterns
+- Financial data adapters for SEC, earnings calls, fundamentals, and technical analysis
+- Integrated PDF report generation and MCP tool orchestration
+- Quick links: [README](../finagent_app/README.md), [Backend](../finagent_app/backend/), [Frontend](../finagent_app/frontend/), [Docs](../finagent_app/docs/QUICKSTART.md)
 
-### Framework Core
-- **Enterprise Orchestration**: Multi-agent coordination
-- **Microsoft Agent Framework Integration**: Full MAF compliance with enhancements
-- **7 Orchestration Patterns**: Sequential, Concurrent, ReAct, Group Chat, Handoff, Hierarchical, MAF Workflows
-- **Security & Observability**: Built-in security controls and OpenTelemetry-based observability
-- **MCP Support**: Dynamic tool integration via Model Context Protocol
-- **Workflow Engine**: YAML-based declarative workflow definitions
+### FinAgent Dynamic App
+- Dynamic planning with human approval gates for every agent step
+- Cosmos DB session history, detailed task telemetry, and MCP-powered data acquisition
+- Illustrates ReAct-style planners running on top of MAF orchestration primitives
+- Quick links: [README](../finagent_dynamic_app/README.md), [Backend](../finagent_dynamic_app/backend/), [Frontend](../finagent_dynamic_app/frontend/), [Quickstart](../finagent_dynamic_app/docs/QUICKSTART.md)
 
-### Framework Enhancements Over Microsoft Agent Framework
-1. **Orchestration Layer**: High-level coordination beyond basic workflows
-2. **Pattern Library**: 7 battle-tested patterns including ReAct, Hierarchical, Group Chat
-3. **Agent Registry**: Centralized agent lifecycle management
-4. **Security Module**: Authentication, authorization, audit logging
-5. **Dynamic Planning**: AI-powered workflow generation
-6. **Observability Service**: OpenTelemetry integration with Application Insights & VS Code AI Toolkit
+![FinAgent Dynamic UI](../finagent_dynamic_app/docs/images/homepage_research.png)
 
-## Architecture Diagram
+### Patterns Sandbox
+- Minimal reference environment for experimenting with individual MAF orchestration patterns
+- Includes ready-to-run backend and frontend layers plus containerized deployment scripts
+- Ideal starting point for greenfield projects that only need a subset of the larger apps
+- Quick links: [README](../patterns/README.md), [Backend](../patterns/backend/), [Frontend](../patterns/frontend/)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 Foundation Framework                │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Orchestrator │  │   Registry   │  │   Security   │      │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘      │
-│         │                  │                  │               │
-│  ┌──────▼──────────────────▼──────────────────▼───────┐    │
-│  │           Microsoft Agent Framework                  │    │
-│  │  ┌────────────────────────────────────────────┐    │    │
-│  │  │  SequentialBuilder | ConcurrentBuilder     │    │    │
-│  │  │  Workflow | AgentProtocol | ChatMessage    │    │    │
-│  │  └────────────────────────────────────────────┘    │    │
-│  └──────────────────────────────────────────────────────┘    │
-│                                                               │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Patterns   │  │   Workflow   │  │     MCP      │      │
-│  │   Library    │  │    Engine    │  │  Integration │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-              ┌─────────────────────────┐
-              │   Your Application      │
-              │  (e.g., Deep Research)  │
-              └─────────────────────────┘
-```
+## Architecture and Pattern Guides
+
+- **[MAF Architecture Overview](./framework/architecture.md)** – How the reference apps compose MAF services and shared infrastructure
+- **[Pattern Reference](./framework/pattern-reference.md)** – Coordination strategies used across the portfolio with implementation notes
+- **[Microsoft Agent Framework Integration](./framework/msft-agent-framework.md)** – Integration touchpoints, extension hooks, and best practices when wiring agents
+- **[Deep Research Playbooks](./hackathon/DEEP_RESEARCH_README.md)** – Step-by-step walkthroughs for building research-centric assistants
+- **[Hackathon Curriculum](./hackathon/README.md)** – Hands-on labs that teach pattern selection, agent design, and deployment workflows
+- **[Reference App Overview](./reference-app/overview.md)** – Component breakdown for the Deep Research baseline
 
 ## Getting Started
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/foundation-framework.git
-cd foundation-framework
+git clone https://github.com/akshata29/agents.git
+cd agents
 
-# Install dependencies
-pip install -e .
-
-# Run the reference application
+# Pick an application to explore
 cd deep_research_app/backend
+
+# Create an isolated environment and install dependencies
+python -m venv .venv
+.venv\\Scripts\\Activate.ps1
+pip install -r requirements.txt
+
+# Launch the backend (follow the app README for full setup)
 python app/main.py
 ```
 
-See [Getting Started Guide](./guides/getting-started.md) for detailed instructions.
+- Frontend projects boot with `npm install && npm run dev` from their respective directories
+- Deployment scripts (`deploy.ps1`, `deploy.bat`, Dockerfiles) are available under each app folder
+
+## Additional Resources
+
+- [Deep Research Decision Guide](./hackathon/DEEP_RESEARCH_DECISION_GUIDE.md)
+- [Deep Research Quickstart](./hackathon/DEEP_RESEARCH_QUICKSTART.md)
+- [Deep Research Patterns](./hackathon/DEEP_RESEARCH_PATTERNS.md)
+- [Advanced Topics](./hackathon/08-advanced-topics.md)
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md) for details.
-
-## License
-
-[Your License Here]
-
+We welcome contributions! Please see the [Contributing Guide](../CONTRIBUTING.md) for details on coding standards, branching, and release processes.

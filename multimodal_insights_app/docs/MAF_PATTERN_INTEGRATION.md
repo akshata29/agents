@@ -1,3 +1,45 @@
+# MAF Pattern Integration
+
+## Current Usage
+
+- **Sequential / Handoff Pattern** drives the core pipeline: Multimodal Processor → Sentiment → Summarizer → Analytics. Each agent receives enriched context from the previous step (transcripts, metadata, intermediate findings).
+- **ReAct Planner** (Planner agent) analyzes uploaded files and objectives, then assembles the step list stored in Cosmos DB. Reasoning traces show Observe → Think → Act → Reflect loops.
+- **Group Collaboration (optional)**: For complex analyses the orchestrator can invite multiple agents to comment on shared context before synthesizing results; hooks exist in the task orchestrator for future group chat scenarios.
+
+## Data Hand-off Details
+
+```python
+extracted_content = execution_context.setdefault("extracted_content", {})
+extracted_content[file_id] = {
+  "transcription": transcript,
+  "text_content": text,
+  "metadata": metadata_dict,
+}
+
+# Downstream agents pull the real transcript
+combined_text = "\n\n".join(
+  content.get("transcription", "")
+  for content in extracted_content.values()
+  if content.get("transcription")
+)
+```
+
+- Multimodal processor writes actual Speech-to-Text and Document Intelligence outputs.
+- Sentiment, summarizer, and analytics agents consume the same serialized content—no mock data involved.
+
+## Key Implementation Files
+
+- `backend/app/services/task_orchestrator.py` – Executes plans, logs pattern usage, updates context between steps.
+- `backend/app/agents/` – Individual agent implementations referencing Azure services.
+- `backend/app/main.py` – Entry point that wires planner, orchestrator, and persistence.
+
+## Future Enhancements
+
+1. **Concurrent Fan-out** – After content extraction, run Sentiment, Summarizer, and Analytics in parallel using `ConcurrentBuilder`.
+2. **GroupChat Summaries** – Allow sentiment and analytics agents to debate findings before the summarizer finalizes outputs.
+3. **Hierarchical Plans** – Extend planner to spawn nested workflows for large document batches.
+
+These refinements can be layered on without rewriting the existing sequential baseline thanks to the modular MAF architecture.
 # Microsoft Agent Framework Pattern Integration
 
 ## Overview

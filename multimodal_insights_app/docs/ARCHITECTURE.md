@@ -1,3 +1,70 @@
+# Architecture Overview
+
+## System Diagram
+
+```
+React UI ──REST──> FastAPI Backend ──> Task Orchestrator (MAF patterns)
+                                    │
+                                    ├─ Planner Agent (ReAct)
+                                    ├─ Multimodal Processor (Speech, Doc Intelligence)
+                                    ├─ Sentiment / Summarizer / Analytics Agents (Azure OpenAI)
+                                    └─ Cosmos DB + Export Service
+```
+
+## Component Responsibilities
+
+### Frontend (`frontend/`)
+- React + TypeScript single-page app served via Vite.
+- Key views: file uploader, objective form, dynamic plan viewer, execution monitor, history explorer.
+- React Query handles polling; WebSocket support can be toggled for real-time updates.
+
+### Backend (`backend/app/`)
+- `main.py` exposes REST endpoints (`/api/upload`, `/api/input_task`, `/api/plans/{id}`) and background task orchestration.
+- `routers/` groups file, plan, and export routes; `services/` contain Tavily search, export, validation, and document intelligence helpers.
+- `persistence/cosmos_memory.py` manages Cosmos DB sessions, plans, and agent outputs.
+- `infra/settings.py` loads configuration, telemetry, and CORS settings; `infra/telemetry.py` activates Application Insights / OTLP exporters when enabled.
+
+### Workflow & Agents
+- Planner agent (ReAct) inspects objectives and uploaded files to build ordered plans.
+- Sequential execution uses a handoff pattern: Multimodal Processor → Sentiment → Summarizer → Analytics.
+- Future enhancements can introduce concurrent or group chat patterns once sentiment/summarizer analytics share the same context.
+
+## Execution Flow
+
+1. **Upload**: Frontend posts files to `/api/upload`; backend saves metadata, streams file paths to the orchestrator.
+2. **Plan**: `/api/input_task` triggers planner agent, which records steps in Cosmos DB and returns the plan to the UI.
+3. **Approve & Execute**: User approves steps; backend executes them sequentially, emitting progress/state updates.
+4. **Results**: Agent outputs (transcripts, sentiment, summaries, analytics) persist in Cosmos DB and surface through status endpoints.
+5. **Export**: Export service assembles Markdown/PDF/JSON packages on demand.
+
+## Data Model (Cosmos DB)
+
+| Entity | Contents |
+| --- | --- |
+| `Plan` | Ordered steps, agent metadata, approvals, timestamps. |
+| `Execution` | Status, progress, runtime metrics, error details. |
+| `Outputs` | Agent results: transcripts, sentiment, summaries, analytics. |
+| `Files` | Upload metadata, storage path, derived features. |
+
+## External Integrations
+
+- **Azure OpenAI** (`AZURE_OPENAI_*`) powers sentiment, summarization, and analytics agents.
+- **Azure Speech Services** (`AZURE_SPEECH_*`) handles audio/video transcription with diarization.
+- **Azure Document Intelligence** (`AZURE_DOCUMENT_INTELLIGENCE_*`) extracts structured data from PDFs.
+- **Azure Cosmos DB** (`COSMOSDB_*` or managed identity) persists plans and results.
+- **Application Insights / OTLP** optional telemetry for tracing agent execution.
+- **Azure Storage** optional for durable file uploads (defaults to local filesystem).
+
+## Observability & Security
+
+- Structured logging with structlog annotates agent start/stop, file operations, and export events.
+- Telemetry toggled via `.env` allows App Insights traces and OTLP spans.
+- CORS whitelist configured through `CORS_ORIGINS`; file size limits and type checks guard uploads.
+- Service principals or managed identity recommended for Cosmos and other Azure services in production deployments.
+
+---
+
+This architecture balances rich multimodal processing with transparent orchestration, providing a reusable template for Azure-backed agent applications.
 # Architecture Overview - Multimodal Insights Application
 
 ## System Architecture

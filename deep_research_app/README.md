@@ -1,3 +1,130 @@
+# Deep Research App
+
+## Overview
+
+Deep Research App is a Microsoft Agent Framework (MAF) reference solution that demonstrates how to orchestrate multi-agent research workflows across three execution styles: declarative YAML pipelines, programmatic Python orchestration, and graph-based MAF workflows. The project combines a FastAPI backend, a React + Vite frontend, Azure OpenAI powered agents, Tavily web search, optional Cosmos DB persistence, and Application Insights telemetry.
+
+## Key Capabilities
+
+- Three interchangeable execution modes that all produce identical research artifacts.
+- Planner → parallel researcher → synthesizer → reviewer chains with live progress streaming.
+- Canonical research report persistence in Cosmos DB for replay and compliance review.
+- Web UI with dashboard, workflow visualization, and real-time execution monitor.
+- Pluggable search providers (Tavily) and tracing hooks compatible with Azure AI Foundry.
+
+## Execution Modes At A Glance
+
+| Mode | Best For | How It Works |
+| --- | --- | --- |
+| YAML Workflow | Analysts and configuration-driven deployments | Declarative `workflows/deep_research.yaml` loaded by the workflow engine.
+| Code Orchestration | Engineers needing custom logic | Python orchestration using sequential, concurrent, and ReAct helpers.
+| MAF Workflow | Production graph topologies | Type-safe MAF `WorkflowBuilder` executors with fan-out/fan-in patterns.
+
+Detailed comparisons live in `docs/DEVELOPER_GUIDE.md`.
+
+## Screenshots
+
+![Deep Research Homepage](docs/images/homepage.png)
+![Execution Progress](docs/images/maf_research_progress.png)
+![MAF Output](docs/images/maf_output.png)
+
+## Architecture Highlights
+
+- **Backend (`backend/app/`)**: FastAPI + WebSocket server, execution monitors, YAML engine, MAF workflow, Cosmos persistence helpers.
+- **Frontend (`frontend/`)**: React + TypeScript UI with React Query, Tailwind styling, and real-time WebSocket client.
+- **Workflows (`workflows/`)**: YAML templates and reusable task definitions.
+- **Agents**: Planner, multiple researcher variants, synthesizer, reviewer, fact checker.
+- **Integrations**: Azure OpenAI, Tavily search, Cosmos DB, Application Insights, optional Easy Auth headers.
+
+```
+Browser UI ──REST/WS──> FastAPI Backend ──> Workflow Engine & MAF Executors ──> Agent Framework & External APIs
+                                      │
+                                      └── Cosmos DB (history) & App Insights (telemetry)
+```
+
+## Getting Started
+
+### Backend
+
+```powershell
+cd deep_research_app/backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# Populate .env with Azure OpenAI, Tavily, and optional Cosmos/App Insights credentials
+uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+
+```powershell
+cd deep_research_app/frontend
+npm install
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+npm run dev -- --port 5173
+```
+
+Open `http://localhost:5173` to launch the dashboard.
+
+## Environment Variables
+
+Populate `backend/.env` with the following keys:
+
+```
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_API_VERSION=2024-10-21
+AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=gpt-4o
+
+TAVILY_API_KEY=...
+
+COSMOSDB_ENDPOINT=https://<account>.documents.azure.com # optional
+COSMOSDB_DATABASE=deep_research
+COSMOSDB_CONTAINER=runs
+# COSMOSDB_KEY=... # or configure AZURE_TENANT_ID / CLIENT credentials
+
+OBSERVABILITY_APPLICATIONINSIGHTS_CONNECTION_STRING=... # optional
+```
+
+## Running A Research Session
+
+1. Start both backend and frontend services.
+2. Browse to the app and select **New Research**.
+3. Provide a topic, select depth and execution mode.
+4. Launch research and watch the Execution Monitor for live task updates.
+5. Review the final report, executive summary, citations, and validation results.
+6. Revisit previous runs from the history view when Cosmos DB is enabled.
+
+## Testing
+
+```powershell
+# Backend unit tests
+cd deep_research_app/backend
+pytest
+
+# Frontend tests
+cd ../frontend
+npm run test
+```
+
+## Deployment Notes
+
+- Use `deploy.ps1` / container definitions from sibling reference apps as templates.
+- Configure Azure App Service or Container Apps with required secrets and Easy Auth headers when securing the API.
+- Enable Application Insights and `AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED=true` to surface agent traces in Azure AI Foundry.
+- Cosmos DB persistence is optional but recommended for enterprise deployments.
+
+## Documentation
+
+- [Quickstart](docs/QUICKSTART.md) – Fast local setup and first run.
+- [Architecture](docs/ARCHITECTURE.md) – Component diagrams, data flow, integrations.
+- [Developer Guide](docs/DEVELOPER_GUIDE.md) – Execution modes, orchestration patterns, extension tips.
+- [Docs Overview](docs/README.md) – Navigation for the full documentation set.
+
+---
+
+Deep Research App is a production-ready blueprint for building research copilots on the Microsoft Agent Framework.
 # Deep Research Application
 
 > A deep research application showcasing three execution modes powered by lightweight **Microsoft Agent Framework (MAF)** utilities.

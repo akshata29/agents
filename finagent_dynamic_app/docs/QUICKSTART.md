@@ -1,237 +1,83 @@
-# Quick Start Guide
+# Quickstart
+
+Bring the FinAgent Dynamic App online locally and complete your first financial research workflow.
 
 ## Prerequisites
 
-Before you begin, ensure you have:
+- Windows, macOS, or Linux workstation
+- Python 3.11+
+- Node.js 18+
+- Azure OpenAI resource with a GPT-4o deployment
+- Financial Modeling Prep (FMP) API key
+- Optional: Azure Cosmos DB and Application Insights instances for persistence and telemetry
 
-1. **Python 3.11+** installed
-2. **Node.js 18+** and npm installed
-3. **Azure OpenAI** account with GPT-4o deployment
-4. **Financial Modeling Prep (FMP) API key** (get from https://financialmodelingprep.com/)
-
-## Installation
-
-### 1. Backend Setup
+## 1. Backend Setup
 
 ```powershell
-# Navigate to backend directory
-cd backend
-
-# Create and activate virtual environment
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# Install dependencies
+cd finagent_dynamic_app/backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+copy .env.template .env
 
-# Configure environment
-cp .env.template .env
-# Edit .env with your API keys
+# edit .env and provide at minimum:
+#   AZURE_OPENAI_ENDPOINT / KEY / DEPLOYMENT / API_VERSION
+#   AZURE_OPENAI_CHAT_DEPLOYMENT_NAME
+#   FMP_API_KEY
+#   YAHOO_FINANCE_ENABLED=true and YAHOO_FINANCE_MCP_URL
+#   COSMOS_DB_* (or comment if running without persistence)
+uvicorn app.main:app --reload --port 8000
 ```
 
-### 2. Frontend Setup
+Backend is ready when Uvicorn reports `http://0.0.0.0:8000`.
+
+## 2. Yahoo Finance MCP Server
+
+Open a new terminal so the backend keeps running.
 
 ```powershell
-# Navigate to frontend directory  
-cd frontend
+cd finagent_dynamic_app/backend/mcp_servers
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python start_server.py
+```
 
-# Install dependencies
+By default the server streams from `http://localhost:8001/sse`. Keep this running while the backend executes MCP-enabled steps.
+
+## 3. Frontend Setup
+
+Use another terminal session for the frontend dev server.
+
+```powershell
+cd finagent_dynamic_app/frontend
 npm install
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+npm run dev -- --port 5173
 ```
 
-## Configuration
+Open `http://localhost:5173` to launch the dashboard. Live reload keeps the UI in sync as you iterate.
 
-Edit `backend/.env` with your credentials:
+## 4. Run Your First Research Session
 
-```env
-# Required
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
-AZURE_OPENAI_API_KEY=your-api-key
-AZURE_OPENAI_DEPLOYMENT=gpt-4o
-
-# Financial Data
-FMP_API_KEY=your-fmp-api-key
-
-# Optional (for PDF export and state management)
-AZURE_STORAGE_CONNECTION_STRING=your-storage-connection
-COSMOS_DB_ENDPOINT=your-cosmos-endpoint
-```
-
-## Running the Application
-
-### Option 1: Run Both Services (Recommended)
-
-```powershell
-# From project root
-.\scripts\dev.ps1
-```
-
-### Option 2: Run Separately
-
-**Terminal 1 - Backend:**
-```powershell
-cd backend
-.\venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-**Terminal 2 - Frontend:**
-```powershell
-cd frontend
-npm run dev
-```
-
-## Access the Application
-
-- **Frontend UI**: http://localhost:5173
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-
-## First Research Run
-
-1. Open http://localhost:5173
-2. Enter a stock ticker (e.g., "MSFT")
-3. Select research scope (Company, SEC, Earnings, Fundamentals, Technicals)
-4. Choose execution pattern (Sequential recommended for first run)
-5. Click "Start Research"
-6. Monitor execution in real-time
-
-## Execution Patterns
-
-### Sequential
-- Agents run in order: Company → SEC → Earnings → Fundamentals → Technicals → Report
-- Each agent builds on previous context
-- Best for comprehensive, narrative-driven analysis
-- Execution time: ~2-5 minutes
-
-### Concurrent
-- All agents run in parallel
-- Results are merged by Reducer agent
-- Best for faster analysis when context doesn't need to flow
-- Execution time: ~1-2 minutes
-
-### Handoff (Coming Soon)
-- Dynamic agent-to-agent delegation
-- Best for complex, exploratory research
-
-### Group Chat (Coming Soon)
-- Multi-agent collaborative discussion
-- Best for hypothesis testing and consensus building
-
-## Example Research Questions
-
-Try these queries to test different capabilities:
-
-- **Company Analysis**: "Analyze Microsoft's competitive position"
-- **SEC Deep Dive**: "What are the key risk factors for Apple?"
-- **Earnings Insight**: "Summarize Tesla's latest earnings outlook"
-- **Fundamental Health**: "Evaluate Amazon's financial strength"
-- **Technical Signals**: "What are the technical indicators for NVIDIA?"
+1. Enter a research objective such as `Build a bull/bear case for MSFT`.
+2. Choose the scope (Company, SEC, Earnings, Fundamentals, Technicals) and keep Sequential execution for the first run.
+3. Approve the generated plan so the orchestrator can execute agents.
+4. Watch the execution monitor for live updates and review agent outputs.
+5. Download the equity brief or inspect the session history view.
 
 ## Troubleshooting
 
-### Backend Issues
-
-**Import errors for agent_framework:**
-```powershell
-# Install Microsoft Agent Framework from source
-# (Currently placeholder - follow framework installation guide)
-```
-
-**Azure OpenAI connection errors:**
-- Verify endpoint URL and API key
-- Check deployment name matches configuration
-- Ensure quota is available
-
-**Financial data API errors:**
-- Verify FMP API key is valid
-- Check rate limits (free tier: 250 requests/day)
-
-### Frontend Issues
-
-**Cannot connect to backend:**
-- Ensure backend is running on port 8000
-- Check CORS configuration in backend settings
-
-**Slow loading:**
-- Check network connection
-- Verify API rate limits not exceeded
+- **Azure OpenAI errors** → Confirm endpoint URL, deployment name, and API version match your resource; ensure quota remains.
+- **FMP or SEC data issues** → Verify `FMP_API_KEY`, optional `SEC_API_KEY`, and respect FMP rate limits (250 calls/day on the free tier).
+- **Cosmos DB connection failures** → Supply `COSMOS_DB_KEY` (or Managed Identity settings) and allow your IP through Cosmos firewall rules.
+- **MCP requests hang** → Restart `backend/mcp_servers` process and confirm `YAHOO_FINANCE_MCP_URL` aligns with the running port.
+- **Frontend cannot reach backend** → Check that both services run, ports 8000/5173 are free, and `VITE_API_BASE_URL` matches.
 
 ## Next Steps
 
-1. **Explore Agent Capabilities**: Test each agent individually via /agents endpoint
-2. **Custom Research**: Modify research scope to focus on specific areas
-3. **PDF Export**: Enable PDF generation in research form
-4. **Advanced Patterns**: Try concurrent execution for speed
-5. **Review Documentation**: Read full docs in /docs directory
+- Review [SYNTHESIS_AGENT_PATTERN.md](SYNTHESIS_AGENT_PATTERN.md) to understand how synthesis agents consume session context.
+- Explore [scripts/dev.ps1](../scripts/dev.ps1) for a single command workflow that launches backend, frontend, and MCP server together.
+- Enable telemetry by setting `APPLICATIONINSIGHTS_CONNECTION_STRING` to capture orchestrator traces in Azure.
 
-## Development
-
-### Running Tests
-
-```powershell
-# Backend tests
-cd backend
-pytest
-
-# Frontend tests
-cd frontend
-npm test
-```
-
-### Code Quality
-
-```powershell
-# Backend linting
-cd backend
-ruff check .
-black --check .
-
-# Frontend linting
-cd frontend
-npm run lint
-```
-
-## Support
-
-- **Documentation**: See `/docs` directory
-- **API Reference**: http://localhost:8000/docs
-- **Issues**: GitHub Issues
-- **Examples**: See `/examples` directory
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────┐
-│         React Frontend (Vite)           │
-│  ┌──────────────────────────────────┐  │
-│  │  ResearchForm | ExecutionMonitor │  │
-│  └──────────────────────────────────┘  │
-└─────────────┬───────────────────────────┘
-              │ HTTP/WebSocket
-┌─────────────▼───────────────────────────┐
-│        FastAPI Backend                   │
-│  ┌──────────────────────────────────┐  │
-│  │   OrchestrationService           │  │
-│  │  ┌────────────────────────────┐ │  │
-│  │  │ SequentialBuilder          │ │  │
-│  │  │ ConcurrentBuilder          │ │  │
-│  │  │ HandoffBuilder             │ │  │
-│  │  └────────────────────────────┘ │  │
-│  └──────────────────────────────────┘  │
-└─────────────┬───────────────────────────┘
-              │
-┌─────────────▼───────────────────────────┐
-│         Financial Agents                 │
-│  ┌──────┬──────┬──────┬──────┬──────┐  │
-│  │Company│ SEC │Earnings│Funds│Tech │  │
-│  └──────┴──────┴──────┴──────┴──────┘  │
-└─────────────┬───────────────────────────┘
-              │
-┌─────────────▼───────────────────────────┐
-│      Data Sources & Azure Services      │
-│  FMP | Yahoo Finance | SEC | Storage    │
-└─────────────────────────────────────────┘
-```
-
-Happy researching! 📈
+Happy researching!

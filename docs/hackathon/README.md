@@ -1,119 +1,57 @@
-# Hackathon Technical Documentation
+# Hackathon Curriculum
 
-## Microsoft Agent Framework & Custom Framework Implementation Guide
+## Overview
 
-Welcome to the comprehensive technical documentation for building multi-agent applications using Microsoft Agent Framework (MAF) and our custom Foundation Framework. This guide is designed for the hackathon to provide you with everything you need to understand, implement, and build upon the patterns demonstrated in our reference applications.
+This curriculum helps teams ramp on the Microsoft Agent Framework (MAF) portfolio that ships with this repository. It replaces the retired “Foundation Framework” material with up-to-date guidance focused on the apps you have just refreshed—Deep Research, FinAgent Dynamic, FinAgent, Advisor Productivity, Multimodal Insights, and the Patterns Sandbox.
 
-## 📚 Documentation Structure
+## Document Map
 
-### 1. [Microsoft Agent Framework Overview](./01-maf-overview.md)
-- What is MAF and why use it?
-- Core concepts: Agents, Workflows, Messages
-- Architecture and components
-- When to use agents vs workflows
+1. **[01-maf-overview.md](./01-maf-overview.md)** – Core concepts, terminology, and architecture primitives in MAF
+2. **[02-reference-architecture.md](./02-framework-architecture.md)** – Cross-app architecture blueprint and shared infrastructure choices
+3. **[03-orchestration-patterns.md](./03-orchestration-patterns.md)** – Pattern catalogue with links back to working code in the portfolio
+4. **[04-agent-implementation.md](./04-agent-implementation.md)** – Agent authoring checklist, MCP integration, and context strategies
+5. **[05-reference-apps.md](./05-reference-apps.md)** – How each reference application applies patterns, agents, and Azure services
+6. **[06-hackathon-implementation.md](./06-hackathon-implementation.md)** – Project backlogs that map to refreshed requirements
+7. **[07-development-guide.md](./07-development-guide.md)** – Environment setup, debugging tips, and deployment helpers
+8. **[08-advanced-topics.md](./08-advanced-topics.md)** – Observability, governance, evaluation, and production hardening
 
-### 2. [Foundation Framework](./02-framework-architecture.md)
-- Our enterprise wrapper over MAF
-- Architecture and design patterns
-- Core components and services
-- Integration patterns
+Deep Research specific add-ons:
+- [DEEP_RESEARCH_README.md](./DEEP_RESEARCH_README.md) – consolidated workbook with facilitators’ notes
+- [DEEP_RESEARCH_QUICKSTART.md](./DEEP_RESEARCH_QUICKSTART.md) – 15-minute path to a working demo
+- [DEEP_RESEARCH_PATTERNS.md](./DEEP_RESEARCH_PATTERNS.md) – optional pattern extensions and iterative improvements
+- [DEEP_RESEARCH_DECISION_GUIDE.md](./DEEP_RESEARCH_DECISION_GUIDE.md) – mode selection and evaluation worksheet
 
-### 3. [Orchestration Patterns Deep Dive](./03-orchestration-patterns.md)
-- 7 orchestration patterns available
-- Implementation details and use cases
-- Code examples for each pattern
-- Best practices and anti-patterns
+## How to Use This Curriculum
 
-### 4. [Agent Implementation Guide](./04-agent-implementation.md)
-- Creating MAF-compliant agents
-- Integration with Azure OpenAI
-- Message handling and context management
-- Tools and MCP integration
+1. **Kick-off (30 min)** – Review the overview doc to ground the team in MAF concepts
+2. **Architecture Workshop (45 min)** – Walk through the reference architecture and pattern catalogue; pick a starting point
+3. **Build Sprint (2–4 hrs)** – Follow the development guide and project checklists to stand up the first end-to-end flow
+4. **Polish + Demo (1–2 hrs)** – Layer in approvals, telemetry, and presentation collateral using the advanced topics guide
 
-### 5. [Reference Applications Analysis](./05-reference-apps.md)
-- Deep Research App architecture (3 execution modes)
-- Financial Research App (Static) - Multi-pattern orchestration
-- Financial Research App (Dynamic) - ReAct planning & human-in-the-loop
-- Multimodal Insights App - Custom Copilot experience
-- Implementation strategies and lessons learned
+## Hackathon Projects
 
-### 6. [Hackathon Use Cases & Implementation](./06-hackathon-implementation.md)
-- Orchestrator Enhancement patterns
-- Multi-Modal Researcher implementation
-- Data Retrieval Optimization techniques
-- General Purpose Agent architecture
-- Real-Time Call Analysis patterns
+The refreshed portfolio supports five core project themes. Each now points to the new docs set and active code paths:
 
-### 7. [Development Quickstart](./07-development-guide.md)
-- Setting up development environment
-- Creating your first agent
-- Building workflows
-- Testing and debugging
+| Theme | Focus | Starter Assets |
+| --- | --- | --- |
+| Orchestrator Enhancement | Expand the Patterns Sandbox with new approval flows or hybrid plans | `patterns/`, [03-orchestration-patterns](./03-orchestration-patterns.md) |
+| Multi-Modal Researcher | Extend Multimodal Insights or Deep Research with new modalities/tools | `multimodal_insights_app/`, `deep_research_app/`, [05-reference-apps](./05-reference-apps.md) |
+| Data Retrieval Optimization | Swap in new financial/news data sources and caching layers | `finagent_app/`, `finagent_dynamic_app/`, [04-agent-implementation](./04-agent-implementation.md) |
+| General Purpose Agent | Create reusable MCP-enabled agents for the Patterns Sandbox | `patterns/backend/app/agents`, [04-agent-implementation](./04-agent-implementation.md) |
+| Real-Time Call Analysis | Add post-call workflows or analytics to Advisor Productivity | `advisor_productivity_app/`, [05-reference-apps](./05-reference-apps.md) |
 
-### 8. [Advanced Topics](./08-advanced-topics.md)
-- **NEW: Chain-of-Thought & Self-Refinement (Phase 4)**
-- Advanced prompting techniques
-- Intelligent model selection
-- Performance optimization
-- Security considerations
-- Monitoring and observability
-- Production deployment
+## Getting Started Checklist
 
-### 9. [Phase 4 Updates - Advanced AI Techniques](./PHASE4_UPDATES.md) ⭐ NEW
-- Chain-of-Thought reasoning implementation
-- Self-Refinement loop (iterative quality improvement)
-- Depth-aware model selection and configuration
-- Frontend model selection UI
-- Integration guide and examples
+1. Clone the repo and skim `docs/README.md` for portfolio context
+2. Choose a project theme and open the referenced application README
+3. Follow `docs/hackathon/07-development-guide.md` to configure environments
+4. Use `docs/hackathon/06-hackathon-implementation.md` to track work items
+5. Capture learnings in the decision guide or pattern worksheet for your finale demo
 
-## 🎯 Hackathon Projects Supported
+## Key Takeaways
 
-Based on the attached hackathon requirements, this documentation covers:
+- MAF provides the orchestration primitives; the refreshed docs show how to wield them across production-grade examples
+- Every app in the portfolio is self-contained—use the docs to copy proven patterns rather than re-inventing them
+- The hackathon material now mirrors the same architecture and terminology used throughout the repository, keeping onboarding friction low
 
-1. **Orchestrator Enhancement** - Advanced multi-modal orchestration with dynamic plan updating
-2. **Multi-Modal Researcher** - Deep reasoning agents with document, image, and verbal instruction support
-3. **Data Retrieval Optimization** - Optimal data retrieval patterns with knowledge graphs and entitlement awareness
-4. **General Purpose Agent** - Plug-and-play agents with MCP integration and dynamic knowledge bases
-5. **Real-Time Call Analysis** - Speech-to-text, sentiment analysis, and dynamic information retrieval
-
-## 🚀 Getting Started
-
-1. **Start with**: [Microsoft Agent Framework Overview](./01-maf-overview.md)
-2. **Understand our framework**: [Foundation Framework](./02-framework-architecture.md)
-3. **Learn patterns**: [Orchestration Patterns](./03-orchestration-patterns.md)
-4. **Build agents**: [Agent Implementation Guide](./04-agent-implementation.md)
-5. **See examples**: [Reference Applications](./05-reference-apps.md)
-6. **Implement your project**: [Hackathon Implementation Guide](./06-hackathon-implementation.md)
-
-## 💡 Key Concepts You'll Learn
-
-- **Microsoft Agent Framework fundamentals**
-- **Multi-agent orchestration patterns**
-- **Enterprise-grade agent architecture**
-- **Real-world implementation strategies**
-- **Deployment patterns**
-- **Performance and security best practices**
-
-## 🛠 What You'll Build
-
-By the end of this hackathon, you'll have:
-- Deep understanding of MAF and multi-agent patterns
-- Hands-on experience with our framework
-- Working implementation of one of the hackathon use cases
-- Code following best practices
-- Knowledge to extend and customize the patterns
-
----
-
-## ✅ Documentation Status: COMPLETE
-
-**ALL 8 SECTIONS COMPLETED** 🎉
-
-This comprehensive hackathon documentation now includes over 15,000 lines of technical content covering:
-- **Foundation Knowledge**: MAF fundamentals, framework architecture, orchestration patterns
-- **Implementation Guides**: Agent creation, reference analysis, hackathon-specific implementations  
-- **Development & Production**: Environment setup, testing, performance optimization, deployment
-
-**Ready to build amazing multi-agent applications? Your complete guide awaits!**
-
-[→ Begin with Microsoft Agent Framework Overview](./01-maf-overview.md)
+Happy building! Document improvements or feedback in the main repo discussions so the curriculum stays fresh.

@@ -1,169 +1,71 @@
 # Synthesis Agent Pattern
 
-## Overview
+## Purpose
 
-The system now implements a **dual-context pattern** for different types of agents:
+Financial research requires agents that can both gather raw data and produce synthesized insights. The FinAgent Dynamic App uses a dual-context pattern so synthesis-oriented agents receive the full session history, while data-gathering agents stay lightweight and consume only explicit dependencies.
 
-### Agent Types
+## Agent Classes
 
-1. **Data Gathering Agents** (Company, SEC, Earnings, Fundamentals, Technicals)
-   - Perform specific, focused tasks
-   - Only need explicit dependency outputs
-   - Use `dependency_artifacts` context
+- **Data gathering** – Company, SEC, Earnings, Fundamentals, Technicals. They execute targeted calls (Yahoo Finance MCP, FMP, SEC) and only read `dependency_artifacts` derived from their declared prerequisites.
+- **Synthesis** – Summarizer (and other future synthesis agents such as Forecaster/Report). They need holistic context and therefore read `session_context`, a chronological view of all completed steps.
 
-2. **Synthesis Agents** (Forecaster, Report)
-   - Analyze and combine data from multiple sources
-   - Need comprehensive session context
-   - Use `session_context` with ALL previous step outputs
+## Implementation Overview
 
-## How It Works
+1. **Agent detection** – `TaskOrchestrator._is_synthesis_agent(step)` checks if the current agent belongs to the synthesis list (`[AgentType.SUMMARIZER, AgentType.REPORT, ...]`).
+2. **Context assembly** –
+   - Synthesis agents call `_get_session_context`, which retrieves every completed step earlier in the plan and serializes agent, tools, and outputs.
+   - Data agents call `_get_dependency_artifacts` to load only the artifacts from their declared dependencies.
+3. **Execution hook** – During `_execute_step` the orchestrator merges either `session_context` or `dependency_artifacts` into the payload passed to the agent implementation.
+4. **Agent consumption** – Agents prioritize `session_context` but gracefully fall back to dependency artifacts for backward compatibility.
 
-### 1. Agent Type Detection
+### Key Code Paths
 
 ```python
 def _is_synthesis_agent(self, step: Step) -> bool:
-    """Check if agent needs comprehensive session context"""
-    synthesis_agents = [AgentType.FORECASTER, AgentType.REPORT]
-    return step.agent in synthesis_agents
+    return step.agent in self._synthesis_agents
+
+async def _get_session_context(self, step: Step) -> dict[str, Any]:
+    steps = await self.cosmos.get_steps_by_plan(step.plan_id, step.session_id)
+    completed = [s for s in steps if s.status == StepStatus.COMPLETED and s.order < step.order]
+    return {"session_context": [self._serialize_step(s) for s in completed]}
 ```
-
-### 2. Context Gathering
-
-#### For Synthesis Agents
-```python
-async def _get_session_context(self, step: Step) -> Dict[str, Any]:
-    """Get ALL previous completed step outputs"""
-    all_steps = await self.cosmos.get_steps_by_plan(step.plan_id, step.session_id)
-    previous_completed = [
-        s for s in all_steps 
-        if s.status == COMPLETED and s.order < step.order
-    ]
-    
-    return {
-        "session_context": [
-            {
-                "step_order": s.order,
-                "agent": s.agent.value,
-                "action": s.action,
-                "tools": s.tools,
-                "result": s.agent_reply
-            }
-            for s in previous_completed
-        ]
-    }
-```
-
-#### For Regular Agents
-```python
-async def _get_dependency_artifacts(self, step: Step) -> Dict[str, Any]:
-    """Get outputs from explicit dependencies only"""
-    # Only collects from step.dependencies list
-    return {"dependency_artifacts": artifacts_from_dependencies}
-```
-
-### 3. Context Passing in _execute_step()
 
 ```python
 if self._is_synthesis_agent(step):
-    # Get ALL previous step outputs
-    session_ctx = await self._get_session_context(step)
-    context.update(session_ctx)
-    logger.info(f"Added {len(session_ctx['session_context'])} steps to synthesis agent")
+    context.update(await self._get_session_context(step))
 elif step.dependencies:
-    # Get only explicit dependencies
-    dep_artifacts = await self._get_dependency_artifacts(step)
-    context.update(dep_artifacts)
-```
-
-## Agent Implementation
-
-### ForecasterAgent
-
-The `ForecasterAgent` now uses `session_context` to access all previous analysis:
-
-```python
-def _build_forecast_prompt(self, task, ticker, tool_name, context):
-    # Priority 1: session_context (comprehensive)
-    session_context = context.get("session_context", [])
-    
-    # Fallback: dependency_artifacts (backward compatibility)
-    if not session_context:
-        session_context = context.get("dependency_artifacts", [])
-    
-    # Extract ALL types of data
-    for artifact in session_context:
-        tools = artifact.get("tools", [])
-        agent = artifact.get("agent", "")
-        content = artifact.get("content", "")
-        
-        if "get_yahoo_finance_news" in tools:
-            news_data = content
-        if "get_recommendations" in tools:
-            recommendations_data = content
-        if "company" in agent.lower():
-            company_data = content
-        # etc...
+    context.update(await self._get_dependency_artifacts(step))
 ```
 
 ## Benefits
 
-1. **Comprehensive Analysis**: Synthesis agents see the full picture
-2. **No Manual Dependencies**: Don't need to declare every dependency
-3. **Automatic Data Discovery**: Agents find what they need in session context
-4. **Backward Compatible**: Falls back to dependency_artifacts if needed
-5. **Efficient for Data Gathering**: Regular agents don't get unnecessary context
+- **Comprehensive synthesis** – Summaries and forecasts leverage every prior artifact without developers manually wiring dependencies.
+- **Lean data steps** – Data gathering agents avoid large payloads and remain focused on the specific inputs they require.
+- **Backwards compatibility** – Agents still support `dependency_artifacts`, allowing gradual rollout or mixed plans.
+- **Reduced misconfiguration** – Fewer chances of missing a dependency link when new data steps are introduced.
 
-## Example Workflow
-
-```
-Step 1: Company Agent → get_stock_info → company_data
-Step 2: Company Agent → get_yahoo_finance_news → news_data  
-Step 3: Company Agent → get_recommendations → recommendations_data
-Step 4: Forecaster → analyze_positive_developments → Dependencies: [2,3]
-
-OLD BEHAVIOR:
-- Step 4 gets: news_data, recommendations_data (only explicit dependencies)
-- MISSING: company_data from Step 1
-
-NEW BEHAVIOR:
-- Step 4 is synthesis agent
-- Gets session_context with ALL steps: [1, 2, 3]
-- Has access to: company_data, news_data, recommendations_data
-- Makes comprehensive analysis with full context
-```
-
-## Configuration
-
-Synthesis agents are defined in `task_orchestrator.py`:
-
-```python
-synthesis_agents = [AgentType.FORECASTER, AgentType.REPORT]
-```
-
-To add new synthesis agents:
-1. Add to `synthesis_agents` list
-2. Update agent's prompt building to use `session_context`
-3. Extract relevant data from session artifacts
-
-## Logging
-
-The system logs comprehensive context gathering:
+## Example Sequence
 
 ```
-INFO: Checking if synthesis agent | agent=Forecaster | is_synthesis=True
-INFO: Collecting session context for synthesis agent | plan_id=xxx
-INFO: Found 4 previous completed steps | current_order=5
-INFO: Added session context from step 1 | agent=Company | tools=['get_stock_info']
-INFO: Added session context from step 2 | agent=Company | tools=['get_yahoo_finance_news']
-INFO: Total session artifacts collected | num_artifacts=4
-INFO: Added comprehensive session context for synthesis agent | num_session_artifacts=4
+1. Company Agent → get_stock_info
+2. Company Agent → get_yahoo_finance_news
+3. Fundamentals Agent → compute_ratios (depends on 1)
+4. Summarizer Agent → synthesizes 
+
+Session context delivered to Summarizer includes outputs from steps 1–3, ensuring recommendations reference fundamentals, news, and company metadata.
 ```
 
-## Testing
+## Extending the Pattern
 
-To verify synthesis agent context:
+1. Add the new agent type to `_synthesis_agents` within `task_orchestrator.py`.
+2. Update the agent implementation to read `session_context` first and extract the needed artifacts.
+3. Include defensive fallbacks to `dependency_artifacts` for compatibility with legacy plans.
 
-1. Create multi-step plan with data gathering + forecaster
-2. Check logs for "Added comprehensive session context"
-3. Verify forecaster output uses data from ALL previous steps
-4. Confirm no "lack of specific data" messages in output
+## Validation Checklist
+
+- Create a multi-step plan that ends with the synthesis agent and inspect logs for `Added comprehensive session context` messages.
+- Confirm the agent output references data from earlier steps (e.g., SEC insights plus technical signals).
+- Run unit/integration tests covering both dependency-only and session-context paths.
+- Verify Cosmos DB persists the expanded context payload for auditing.
+
+This pattern keeps synthesis agents authoritative and context-aware while preserving performance for the rest of the pipeline.

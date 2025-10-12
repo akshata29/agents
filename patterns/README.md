@@ -1,3 +1,135 @@
+# Microsoft Agent Framework Patterns Sandbox
+
+## Overview
+
+The Patterns sandbox demonstrates how to compose Microsoft Agent Framework (MAF) building blocks into reusable orchestration templates. It includes a FastAPI backend and a React + Vite frontend that expose six production-style coordination strategies, real-time execution telemetry, optional Cosmos DB persistence, and Azure Easy Auth integration points.
+
+## Highlights
+
+- End-to-end sample that runs the official MAF `SequentialBuilder`, `ConcurrentBuilder`, `WorkflowBuilder`, `MagenticBuilder`, and a custom ReAct workflow.
+- Real-time execution timeline with live agent events delivered over server-side callbacks.
+- Execution history persisted locally and optionally in Azure Cosmos DB for durable session replay.
+- Ready-to-deploy Azure configuration (Easy Auth headers, Application Insights tracing, Cosmos DB, Azure OpenAI).
+- Frontend dashboard with pattern catalog, execution monitor, results viewer, and settings panel.
+
+## Patterns Included
+
+| Pattern | Primary Agents | Key Scenario | What You Learn |
+| --- | --- | --- | --- |
+| Sequential | Planner → Researcher → Writer → Reviewer | Digital transformation playbook | Deterministic pipelines where output from one agent feeds the next.
+| Concurrent | Summarizer, Pros/Cons Analyst, Risk Assessor | Market analysis | Running independent agents in parallel and aggregating results.
+| Group Chat | Writer, Reviewer, Moderator | Product launch collaboration | Managing iterative maker-checker loops with a conversation manager.
+| Handoff | Router with dynamic specialists | Customer support routing | Content-aware agent selection and ownership transfer.
+| Magentic | Planner, Researcher, Writer, Validator | Technical support triage | Goal-driven coordination with task ledgers and tool calls.
+| Deep Research (ReAct) | Planner, Researcher, concurrent searchers, Reviewer | Multi-stage research briefs | Combining planning, concurrent execution, code analysis, and cited reporting modes.
+
+The backend exposes metadata for each pattern through the `/patterns` endpoint, which the frontend uses to render the catalog cards and quick-start prompts.
+
+## Screenshots
+
+![Patterns Homepage](docs/images/homepage.png)
+![Execution Monitor](docs/images/execution_monitor.png)
+![Completed Execution](docs/images/completed_execution.png)
+![Execution History](docs/images/history.png)
+![Settings Panel](docs/images/settings.png)
+
+## Backend Capabilities
+
+- FastAPI service in `backend/api.py` with typed request/response models for executing patterns and querying status.
+- Pluggable agent activity callback system that streams `AgentActivity` objects during execution.
+- Optional Cosmos DB persistence (`persistence/cosmos_memory.py`) activated through `COSMOSDB_*` environment variables.
+- Azure Easy Auth header extraction (`auth/auth_utils.py`) for production deployments with App Service authentication.
+- Deep Research ReAct orchestration (`react/react.py`) with mode switching for baseline, private search, reviewer assist, and multimodal analysis.
+- CLI helpers (`cli.py`) to trigger workflows directly from the command line during development.
+
+### Key Endpoints
+
+- `GET /patterns` – List available patterns and their metadata.
+- `POST /patterns/execute` – Start a pattern run with `{ "pattern": "sequential", "task": "..." }`.
+- `GET /patterns/status/{execution_id}` – Poll real-time status, agent outputs, and progress.
+- `GET /patterns/history` – Return in-memory execution history for the current session.
+- `GET /patterns/history/cosmos` – Fetch persisted executions when Cosmos DB is configured.
+- `GET /system/status` – Validate Azure OpenAI connectivity and model configuration.
+
+## Frontend Capabilities
+
+- React + Vite + TypeScript application (`frontend/`) styled with Tailwind CSS.
+- React Query data layer for polling execution status and hydrating catalog metadata.
+- Execution monitor that visualizes agent turn-taking, intermediate outputs, and timing data.
+- History view that replays completed runs and exposes saved transcripts when persistence is enabled.
+- Settings panel for configuring API base URL, polling intervals, and optional authentication headers.
+
+## Getting Started
+
+### 1. Backend Setup
+
+```powershell
+cd patterns/backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# edit .env with your Azure OpenAI endpoint, deployment name, and credentials
+uvicorn api:app --reload --port 8001
+```
+
+Key environment variables (see `.env.example`):
+
+- `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_CHAT_DEPLOYMENT_NAME`, `AZURE_OPENAI_API_VERSION` – Required for MAF agent execution.
+- `MODEL_PROVIDER` – Supports `github` and Azure Foundry hosted models.
+- `COSMOSDB_ENDPOINT`, `COSMOS_DB_DATABASE`, `COSMOS_DB_CONTAINER` – Optional persistence layer.
+- `APPLICATIONINSIGHTS_CONNECTION_STRING` – Enable tracing when sending telemetry to Azure.
+
+### 2. Frontend Setup
+
+```powershell
+cd patterns/frontend
+npm install
+npm run dev -- --port 5174
+```
+
+Configure the API base URL in `frontend/.env` (create if missing):
+
+```
+VITE_API_BASE_URL=http://localhost:8001
+```
+
+The development server proxies API calls to the backend and supports hot module replacement for rapid UI updates.
+
+## Project Layout
+
+```
+patterns/
+├── backend/
+│   ├── api.py                 # FastAPI application entry point
+│   ├── sequential/            # SequentialBuilder orchestration
+│   ├── concurrent_pattern/    # ConcurrentBuilder orchestration
+│   ├── group_chat/            # WorkflowBuilder group chat manager
+│   ├── handoff/               # Routing-based workflow
+│   ├── magentic/              # MagenticBuilder goal orchestration
+│   ├── react/                 # Deep Research ReAct workflow
+│   └── persistence/           # Cosmos DB storage providers
+├── frontend/
+│   └── src/                   # React UI components and pages
+└── docs/images/               # Screenshot assets used in documentation
+```
+
+## Extending the Sandbox
+
+- Add new patterns by implementing a workflow module and wiring it into `PATTERN_FUNCTIONS` in `backend/api.py`.
+- Implement additional telemetry sinks by registering execution event handlers in `execute_pattern_background`.
+- Customize authentication providers by extending the helpers in `backend/auth`.
+- Tailor the frontend catalog cards by updating `frontend/src/data/patterns.ts` (or the equivalent data hook).
+
+## Deployment Notes
+
+- Scripts like `deploy.ps1`, `deploy.bat`, and `Dockerfile` provide Azure App Service and container deployment templates.
+- When hosting on Azure, configure Easy Auth to inject user headers and supply Cosmos DB credentials for history persistence.
+- Enable Application Insights and tracing flags to surface agent activity in the Azure AI Foundry monitoring experience.
+
+---
+
+This sandbox is the quickest way to explore how Microsoft Agent Framework orchestration strategies behave in practice and serves as a blueprint for incorporating MAF patterns into production-grade applications.
 # Agent Patterns - Microsoft Agent Framework Demo
 
 This is a comprehensive demo showcasing **6 different orchestration patterns** using the Microsoft Agent Framework with a modern React + Vite + Tailwind CSS frontend, including **advanced MAF capabilities**.

@@ -1,3 +1,136 @@
+# Multimodal Insights App
+
+## Overview
+
+Multimodal Insights App is a Microsoft Agent Framework (MAF) reference solution that orchestrates audio, video, and document analysis through coordinated agents. A FastAPI backend, React + Vite frontend, and Azure AI services work together to produce sentiment, summaries, and analytics while keeping humans in the loop for approvals and review.
+
+## Key Capabilities
+
+- Multimodal ingestion covering audio/video transcription and PDF extraction via Azure Speech and Document Intelligence.
+- ReAct-inspired planner that builds executable plans, tracks dependencies, and surfaces human approval checkpoints.
+- Sentiment, summarization, and analytics agents that generate persona-specific reports and actionable recommendations.
+- Cosmos DB-backed history and export service for Markdown, PDF, and JSON artifacts.
+- Responsive dashboard with file uploads, step-by-step execution monitor, and session history browser.
+
+## Screenshots
+
+![Homepage](docs/images/homepage.png)
+![Dynamic Plan](docs/images/multimodal_insights.png)
+![Analysis In Progress](docs/images/analysis_in_progress.png)
+
+## Architecture Highlights
+
+```
+React UI ──REST──> FastAPI Backend ──> Task Orchestrator (MAF patterns)
+                                 │
+                                 ├─ Multimodal Processor (Speech, Doc Intelligence)
+                                 ├─ Sentiment / Summarizer / Analytics Agents (Azure OpenAI)
+                                 └─ Cosmos DB (sessions, plans, outputs) & Export Service
+```
+
+- **Frontend (`frontend/`)**: React + TypeScript with Tailwind styling, file uploader, plan viewer, execution monitor, and history view.
+- **Backend (`backend/app/`)**: FastAPI REST + WebSocket endpoints, task orchestrator, agent registry, Cosmos persistence, Application Insights telemetry hooks.
+- **Agents (`backend/app/agents/`)**: Planner, multimodal processor, sentiment, summarizer, analytics, plus shared tool adapters.
+- **Docs (`docs/`)**: Architecture diagrams, quickstart, and MAF pattern integration notes.
+
+## Agent Lineup
+
+| Agent | Responsibilities |
+| --- | --- |
+| Planner | Generates execution plans using ReAct reasoning and available file metadata. |
+| Multimodal Processor | Transcribes audio/video with Azure Speech, extracts PDFs via Document Intelligence, and stores normalized content. |
+| Sentiment | Scores sentiment, emotions, and tone; produces timelines per speaker or section. |
+| Summarizer | Delivers persona-aware summaries (executive, technical, general) at multiple detail levels. |
+| Analytics | Surfaces patterns, trends, recommendations, and structured insights ready for visualization. |
+
+## Execution Flow
+
+1. User uploads files and provides an analysis objective.
+2. Planner evaluates content and assembles a step-by-step plan.
+3. User approves steps; orchestrator executes agents sequentially while streaming progress.
+4. Agents write outputs to storage; final insights, summaries, and exports become available.
+5. History view loads past sessions from Cosmos DB for replay and audit.
+
+## Getting Started
+
+### Backend
+
+```powershell
+cd multimodal_insights_app/backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+# Fill .env with Azure OpenAI, Speech, Document Intelligence, and optional Cosmos/App Insights values
+uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+
+```powershell
+cd multimodal_insights_app/frontend
+npm install
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+npm run dev -- --port 5173
+```
+
+Browse to `http://localhost:5173` to launch the dashboard.
+
+## Environment Variables
+
+Configure `backend/.env` using these keys:
+
+```
+AZURE_OPENAI_ENDPOINT=...
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_API_VERSION=2024-08-01-preview
+
+AZURE_SPEECH_KEY=...
+AZURE_SPEECH_REGION=eastus
+
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<resource>.cognitiveservices.azure.com/
+AZURE_DOCUMENT_INTELLIGENCE_KEY=...
+
+COSMOSDB_ENDPOINT=https://<account>.documents.azure.com:443/   # optional
+COSMOSDB_DATABASE=multimodal_insights
+COSMOSDB_CONTAINER=tasks
+# COSMOSDB_KEY=... or TENANT_ID/CLIENT_ID/CLIENT_SECRET for managed identity
+
+APPLICATIONINSIGHTS_CONNECTION_STRING=...                      # optional
+MAX_UPLOAD_SIZE=104857600
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+```
+
+## Testing
+
+```powershell
+# Backend tests
+cd multimodal_insights_app/backend
+pytest
+
+# Frontend tests
+cd ../frontend
+npm run test
+```
+
+## Deployment Notes
+
+- Use `deploy.ps1` or the Dockerfile as a base for Azure App Service or Container Apps deployments.
+- Enable Azure Easy Auth to forward user identity headers when enterprise authentication is required.
+- Configure Application Insights and OTLP exporters to observe agent execution timelines.
+- Cosmos DB persistence is optional but recommended for shared environments and compliance reporting.
+
+## Documentation
+
+- [Docs Overview](docs/README.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Quickstart](docs/QUICKSTART.md)
+- [MAF Pattern Integration](docs/MAF_PATTERN_INTEGRATION.md)
+
+---
+
+Multimodal Insights App showcases how Microsoft Agent Framework, Azure AI services, and modern web tooling can deliver rich, explainable insights across mixed media.
 # Multimodal Insights Multi-Agent Application
 
 > **AI-powered multimodal content analysis system** with dynamic planning, human-in-the-loop approval, and specialized agents for audio, video, and PDF processing.

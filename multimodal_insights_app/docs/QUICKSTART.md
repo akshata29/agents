@@ -1,3 +1,66 @@
+# Quickstart
+
+Launch the Multimodal Insights App locally and run your first multimodal analysis.
+
+## Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- Azure resources: OpenAI, Speech, Document Intelligence, optional Cosmos DB
+- Corresponding API keys or service principal credentials
+
+## 1. Backend Setup
+
+```powershell
+cd multimodal_insights_app/backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+
+# edit .env and provide:
+#   AZURE_OPENAI_ENDPOINT / KEY / DEPLOYMENT
+#   AZURE_SPEECH_KEY / REGION
+#   AZURE_DOCUMENT_INTELLIGENCE_* values
+#   COSMOSDB_* (optional for persistence)
+uvicorn app.main:app --reload --port 8000
+```
+
+Backend should report `Uvicorn running on http://0.0.0.0:8000`.
+
+## 2. Frontend Setup
+
+```powershell
+cd ../frontend
+npm install
+echo "VITE_API_BASE_URL=http://localhost:8000" > .env
+npm run dev -- --port 5173
+```
+
+Open `http://localhost:5173` in your browser.
+
+## 3. Run A Sample Analysis
+
+1. Upload audio/video/PDF files (drag-and-drop or click to browse).
+2. Enter an objective such as `Summarize these documents and capture sentiment`.
+3. Review the generated execution plan and approve the steps.
+4. Watch the execution monitor stream progress and agent outputs.
+5. Download results via the export panel (Markdown, PDF, JSON).
+
+## Troubleshooting
+
+- **Audio transcription fails** → confirm file format support, Speech key/region, and Azure quota.
+- **PDF extraction errors** → ensure files are not password protected and Document Intelligence keys are valid.
+- **Cosmos DB connectivity** → supply `COSMOSDB_KEY` or TENANT/CLIENT/SECRET and verify firewall rules.
+- **Frontend cannot reach backend** → check `VITE_API_BASE_URL`, restart `npm run dev`, and verify port 8000 availability.
+
+## Next Steps
+
+- Review [ARCHITECTURE.md](ARCHITECTURE.md) for component flow and integrations.
+- Study [MAF_PATTERN_INTEGRATION.md](MAF_PATTERN_INTEGRATION.md) to customize orchestration patterns.
+- Enable telemetry via `APPLICATIONINSIGHTS_CONNECTION_STRING` to observe agent traces in Azure.
+
+Happy analyzing!
 # Quick Start Guide - Multimodal Insights Application
 
 ## Overview

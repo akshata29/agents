@@ -1,302 +1,97 @@
-# Deep Research Application - Architecture & Flow
+# Deep Research Architecture
 
-## 🏗️ System Architecture
+Understand how the Deep Research App stitches together a responsive UI, multi-agent orchestration, and optional persistence.
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         USER INTERFACE                               │
-│                     (Browser - Port 3000)                            │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                    React Application                           │ │
-│  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────┐  │ │
-│  │  │  Dashboard   │ │ Research     │ │  Workflow            │  │ │
-│  │  │  - Stats     │ │ Form         │ │  Visualization       │  │ │
-│  │  │  - Health    │ │ - Input      │ │  - React Flow        │  │ │
-│  │  │  - Metrics   │ │ - Config     │ │  - Task Graph        │  │ │
-│  │  └──────────────┘ └──────────────┘ └──────────────────────┘  │ │
-│  │  ┌──────────────────────────────────────────────────────────┐ │ │
-│  │  │           Execution Monitor                               │ │ │
-│  │  │  - Real-time Progress  - Task Status  - Results Viewer   │ │ │
-│  │  └──────────────────────────────────────────────────────────┘ │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-└────────────────┬──────────────────────┬─────────────────────────────┘
-                 │ HTTP REST            │ WebSocket (Real-time)
-                 │                      │
-┌────────────────▼──────────────────────▼─────────────────────────────┐
-│                      BACKEND API LAYER                               │
-│                   (FastAPI - Port 8000)                              │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                     FastAPI Application                        │ │
-│  │  ┌──────────────────────┐    ┌───────────────────────────┐   │ │
-│  │  │   REST Endpoints     │    │   WebSocket Handler       │   │ │
-│  │  │  GET  /health        │    │  /ws/research/:id         │   │ │
-│  │  │  GET  /api/workflow/ │    │  - Connection management  │   │ │
-│  │  │       info           │    │  - Real-time updates      │   │ │
-│  │  │  POST /api/research/ │    │  - Task events            │   │ │
-│  │  │       start          │    │  - Progress streaming     │   │ │
-│  │  │  GET  /api/research/ │    └───────────────────────────┘   │ │
-│  │  │       status/:id     │                                     │ │
-│  │  │  GET  /api/research/ │                                     │ │
-│  │  │       list           │                                     │ │
-│  │  └──────────────────────┘                                     │ │
-│  │                                                                 │ │
-│  │  ┌──────────────────────────────────────────────────────────┐ │ │
-│  │  │            Request/Response Models (Pydantic)             │ │ │
-│  │  │  ResearchRequest | ExecutionStatus | WorkflowInfo        │ │ │
-│  │  └──────────────────────────────────────────────────────────┘ │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────────┐
-│                 LOCAL ORCHESTRATION UTILITIES (app.maf)             │
-│           (Microsoft Agent Framework helpers + workflow engine)     │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────┐ │ │
-│  │  │ WorkflowEngine   │  │  Orchestrator    │  │   Agent     │ │ │
-│  │  │  - Load YAML     │  │  - Pattern exec  │  │   Registry  │ │ │
-│  │  │  - Parse tasks   │  │  - Coordination  │  │  - Lookup   │ │ │
-│  │  │  - Execute flow  │  │  - Monitoring    │  │  - Create   │ │ │
-│  │  │  - Manage state  │  │  - Error handle  │  │  - Manage   │ │ │
-│  │  └──────────────────┘  └──────────────────┘  └─────────────┘ │ │
-│  │                                                                 │ │
-│  │  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────┐ │ │
-│  │  │ Planning         │  │  Monitoring      │  │   Security  │ │ │
-│  │  │  - Task order    │  │  - Metrics       │  │  - Auth     │ │ │
-│  │  │  - Dependencies  │  │  - Logging       │  │  - Access   │ │ │
-│  │  │  - Optimization  │  │  - Tracing       │  │  - Encrypt  │ │ │
-│  │  └──────────────────┘  └──────────────────┘  └─────────────┘ │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-└────────────────────────────┬────────────────────────────────────────┘
-                             │
-┌────────────────────────────▼────────────────────────────────────────┐
-│              MICROSOFT AGENT FRAMEWORK + AGENTS                      │
-│                    (Agent Execution Layer)                           │
-│  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                     Workflow Execution                         │ │
-│  │                                                                 │ │
-│  │  ┌────────────┐    ┌────────────┐    ┌─────────────────┐     │ │
-│  │  │  Planner   │───→│ Researcher │───→│  Synthesizer    │     │ │
-│  │  │  Agent     │    │ Agents     │    │  Agent          │     │ │
-│  │  │            │    │ (Parallel) │    │                 │     │ │
-│  │  │ - Analyze  │    │ - Core     │    │ - Compile       │     │ │
-│  │  │ - Plan     │    │ - Current  │    │ - Structure     │     │ │
-│  │  │ - Strategy │    │ - Trends   │    │ - Format        │     │ │
-│  │  └────────────┘    │ - Compare  │    └─────────────────┘     │ │
-│  │                    │ - Expert   │             │               │ │
-│  │                    └────────────┘             ▼               │ │
-│  │                                        ┌─────────────────┐    │ │
-│  │                                        │   Validator     │    │ │
-│  │                                        │   Agent         │    │ │
-│  │                                        │  - Quality      │    │ │
-│  │                                        │  - Accuracy     │    │ │
-│  │                                        │  - Completeness │    │ │
-│  │                                        └─────────────────┘    │ │
-│  └───────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-## 🔄 Data Flow
-
-### 1. Research Initiation Flow
+## System Overview
 
 ```
-User (Browser)
-    │
-    ├─ 1. Enters research topic and config
-    │
+Browser (React + Vite)
+    │  REST + WebSocket
     ▼
-Frontend (ResearchForm.tsx)
-    │
-    ├─ 2. Validates input
-    ├─ 3. POST /api/research/start
-    │
+FastAPI Backend (Uvicorn)
+    │  Orchestration adapters
     ▼
-Backend API (main.py)
-    │
-    ├─ 4. Receives ResearchRequest
-    ├─ 5. Prepares variables for workflow
-    │
+Workflow Engine & MAF Executors
+    │  Agent invocations
     ▼
-WorkflowEngine
-    │
-    ├─ 6. Loads deep_research.yaml
-    ├─ 7. Parses tasks and dependencies
-    ├─ 8. Creates execution instance
-    │
-    ▼
-Backend API
-    │
-    ├─ 9. Returns execution_id
-    ├─ 10. Starts background monitoring
-    │
-    ▼
-Frontend
-    │
-    └─ 11. Switches to Execution Monitor
-        └─ 12. Opens WebSocket connection
+Agents + External Services
+    ├─ Azure OpenAI (LLM)
+    ├─ Tavily (web search)
+    └─ Cosmos DB / Application Insights (optional)
 ```
 
-### 2. Real-time Execution Flow
+The frontend streams user intent to the backend, which launches one of three execution modes (YAML, code, or MAF workflow). Results stream back to the UI in real time and can be persisted for replay.
 
-```
-WorkflowEngine
-    │
-    ├─ 1. Executes tasks based on dependencies
-    │
-    ▼
-Agent Framework
-    │
-    ├─ 2. Planner Agent creates research plan
-    │      └─ Updates: task_status = 'running'
-    │
-    ├─ 3. Researcher Agents (parallel)
-    │      ├─ Core concepts investigation
-    │      ├─ Current state research
-    │      ├─ Trends analysis
-    │      ├─ Comparison study
-    │      └─ Expert opinions
-    │      └─ Updates: task_status = 'success'
-    │
-    ├─ 4. Synthesizer Agent
-    │      └─ Compiles findings into report
-    │
-    └─ 5. Validator Agent
-           └─ Validates quality and accuracy
-    │
-    ▼
-Background Monitor (Backend)
-    │
-    ├─ Detects status changes
-    ├─ Broadcasts via WebSocket
-    │
-    ▼
-WebSocket Connection
-    │
-    ├─ Sends JSON messages:
-    │    ├─ { type: 'status', ... }
-    │    ├─ { type: 'task_update', ... }
-    │    ├─ { type: 'progress', ... }
+## Component Breakdown
 
-    ### 3. Historical Persistence Flow
+### Frontend (`frontend/`)
 
-    ```
-    Backend (save_execution_to_cosmos)
-         │
-         ├─ 1. Fetch execution context (run/session IDs, metadata, final variables)
-         ├─ 2. Sanitize results → removes raw SDK types, ensures JSON compatibility
-         ├─ 3. Normalize aliases → build canonical `result_sections` + `task_results`
-         ├─ 4. Backfill metadata → merge sections for backwards-compatible reads
-         ├─ 5. Upsert ResearchRun document into Cosmos DB
-         │
-    CosmosMemoryStore (Azure Cosmos DB)
-         │
-         ├─ Stores:
-         │    ├─ `research_report`, `summary`, `result_sections`
-         │    ├─ execution timeline (`execution_details`, `completed_tasks`)
-         │    └─ technical metadata (orchestration pattern, framework, engine)
-         │
-    Historical API (`/api/research/status/{id}` when inactive)
-         │
-         └─ Rehydrates canonical sections so archived runs display identical detail to live sessions
-    ```
-    │    └─ { type: 'completed', ... }
-    ### 4. Component Communication Flow
-    ▼
-Frontend (ExecutionMonitor.tsx)
-    │
-    ├─ Receives WebSocket messages
-    ├─ Updates UI components
-    ├─ Shows progress bar
-    ├─ Lists completed/failed tasks
-    └─ Displays final results
-```
+- React + TypeScript single-page app built with Vite and Tailwind.
+- React Query handles REST calls; a lightweight WebSocket client handles streaming updates.
+- Key surfaces: Dashboard, New Research form, Workflow visualization, Execution Monitor.
+- Result views normalize output sections (plan, findings, summary, citations) regardless of execution mode.
 
-### 3. Component Communication Flow
+### Backend (`backend/app/`)
 
-```
-┌─────────────────┐
-│   App.tsx       │  Main application state
-└────────┬────────┘
-         │
-         ├──────────────────────┬────────────────────┬──────────────────┐
-         │                      │                    │                  │
-┌────────▼────────┐   ┌─────────▼──────────┐  ┌────▼──────────┐  ┌───▼──────────┐
-│  Dashboard      │   │  ResearchForm      │  │  Workflow     │  │  Execution   │
-│                 │   │                    │  │  Visualizer   │  │  Monitor     │
-└────────┬────────┘   └─────────┬──────────┘  └────┬──────────┘  └───┬──────────┘
-         │                      │                   │                 │
-         ├──────────────────────┴───────────────────┴─────────────────┤
-         │                                                             │
-┌────────▼─────────────────────────────────────────────────────────────▼──────┐
-│                          API Client (api.ts)                                 │
-│  - apiClient.healthCheck()                                                   │
-│  - apiClient.getWorkflowInfo()                                               │
-│  - apiClient.startResearch(request)                                          │
-│  - apiClient.getExecutionStatus(id)                                          │
-│  - apiClient.connectWebSocket(id)                                            │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+- **`main.py`** exposes REST endpoints (`/api/research/start`, `/status`, `/list`) and a WebSocket hub.
+- **`routers/`** separates concerns for research execution, history, and health checks.
+- **`services/`** contains orchestration adapters for each execution mode plus persistence helpers.
+- **`persistence/`** (optional) saves canonical `ResearchRun` records to Cosmos DB.
+- **`settings.py`** centralizes configuration for Azure OpenAI, Tavily, CORS, telemetry, and Cosmos DB.
 
-## 🎯 Key Integration Points
+### Orchestration Layer
 
-### 1. Backend ↔ Framework
+- **YAML Workflow Engine** loads `workflows/deep_research.yaml`, resolves variables, and enforces dependencies.
+- **Programmatic Orchestrator** uses helper functions (sequential, concurrent, ReAct) to stitch planner → researchers → synthesis chains.
+- **MAF Workflow** leverages `WorkflowBuilder` to model fan-out/fan-in graphs with typed messages and rich telemetry.
 
-```python
-# Backend initializes framework components
-settings = Settings()
-agent_registry = AgentRegistry(settings)
-monitoring = MonitoringService(settings)
-orchestrator = MagenticOrchestrator(...)
+### Agents & Tools
 
-# Backend uses WorkflowEngine
-workflow_engine = WorkflowEngine(
-    settings=settings,
-    agent_registry=agent_registry,
-    monitoring=monitoring
-)
+- Planner, researcher variants, writer/synthesizer, reviewer, and optional fact-checker agents live under `backend/app/agents/`.
+- Agents call Azure OpenAI deployments; researchers optionally enrich context with Tavily results through helper modules.
+- Additional MCP tools or REST integrations register through configuration and can be reused across modes.
 
-# Load and execute workflows
-workflow_engine.load_workflow(workflow_path)
-execution = await workflow_engine.execute_workflow(
-    workflow_name="deep_research_workflow",
-    variables=variables
-)
-```
+## Execution Flow
 
-### 2. Frontend ↔ Backend
+1. **Start** – Frontend posts `/api/research/start` with topic, depth, and execution mode; backend returns an `execution_id`.
+2. **Stream** – Frontend opens `ws://.../ws/research/{execution_id}` to receive status, task, and result events.
+3. **Orchestrate** – Backend selects the requested mode, invokes agents, and normalizes outputs into canonical sections.
+4. **Persist (optional)** – When Cosmos DB is configured, the final payload and workflow variables are upserted as a `ResearchRun` document.
+5. **Replay** – History requests hydrate the same structure used during live runs so archived sessions render identically to active ones.
 
-```typescript
-// REST API calls
-const response = await apiClient.startResearch({
-  topic: "AI in Healthcare",
-  depth: "comprehensive",
-  max_sources: 10,
-  include_citations: true
-});
+## Data Schema Highlights
 
-// WebSocket connection
-const ws = apiClient.connectWebSocket(executionId);
-ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-  // Update UI based on message type
-};
-```
+`ResearchRun` documents capture:
 
-### 3. Framework ↔ Agents
+| Field | Purpose |
+| --- | --- |
+| `id` | Execution UUID returned to the client. |
+| `mode` | `yaml`, `code`, or `maf_workflow` to identify orchestration strategy. |
+| `topic` | User-supplied research prompt. |
+| `result_sections` | Canonical dictionary (plan, findings, report, executive_summary, citations, validation). |
+| `task_results` | Chronological agent outputs keyed by agent identifier. |
+| `variables` | Final workflow variables for replay (YAML mode snapshot). |
+| `execution_details` | Durations, token usage, errors, and metadata surfaced in the UI. |
 
-```yaml
-# deep_research.yaml defines agent tasks
-tasks:
-  - id: create_research_plan
-    type: agent
-    agent: "planner"
-    parameters:
-      task: "Create plan for: ${research_topic}"
-    outputs:
-      result: research_plan
-```
+## Observability and Telemetry
 
-## 📊 State Management
+- Structured logging emits `execution_id`, agent name, and step metadata for easy filtering.
+- Application Insights / OTLP exporters activate when `OBSERVABILITY_*` settings are provided.
+- Frontend visualizations mirror backend events, providing a real-time lens into progress and failures.
+
+## Security & Compliance
+
+- CORS origins, allowed headers, and credentials are controlled via environment variables.
+- Secrets stay in `.env`; production deployments should prefer Azure Key Vault or managed identity.
+- Cosmos DB persistence supports both key-based auth and Azure AD client credentials; ensure data retention policies align with customer requirements.
+
+## Extension Points
+
+- Add new agents by registering them in the agent factory and updating workflows or orchestration adapters.
+- Introduce additional data sources by wiring MCP tools or REST clients into the researcher agents.
+- Extend the UI by surfacing new result sections or metrics; the API already returns normalized structures for consumption.
+
+This architecture balances rapid experimentation with production-grade observability, making it easy to iterate on research workflows without sacrificing reliability.
 
 ### Backend State
 ```python

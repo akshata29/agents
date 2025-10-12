@@ -67,4 +67,4 @@ This guide links the refreshed documentation set to the live applications in the
 | Deliver financial intelligence | FinAgent or FinAgent Dynamic |
 | Handle meeting intelligence | Advisor Productivity App |
 
-Next: use [06-hackathon-implementation.md](./06-hackathon-implementation.md) to translate these examples into hackathon-ready project plans.
+Next: use [06-development-guide.md](./06-development-guide.md) to review the development guide.

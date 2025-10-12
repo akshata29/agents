@@ -1,8 +1,8 @@
-# Microsoft Agent Framework Portfolio Docs# Microsoft Agent Framework Application Suite
+# Microsoft Agent Framework Application Suite
 
 
 
-## Overview## Overview
+## Overview
 
 
 

@@ -89,4 +89,4 @@ When working with real Azure resources, create a dedicated resource group per te
 
 ## Next Steps
 
-Continue to [08-advanced-topics.md](./08-advanced-topics.md) for deeper dives into prompt optimization, telemetry, and production hardening.
+Continue to [07-advanced-topics.md](./07-advanced-topics.md) for deeper dives into prompt optimization, telemetry, and production hardening.
